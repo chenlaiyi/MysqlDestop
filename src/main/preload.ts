@@ -1,0 +1,26 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('mysqlApi', {
+  connect: (config: any) => ipcRenderer.invoke('mysql:connect', config),
+  getTables: (database: any) => ipcRenderer.invoke('mysql:getTables', database),
+  getTableData: (database: any, table: any) => ipcRenderer.invoke('mysql:getTableData', database, table),
+  getViews: (database: any) => ipcRenderer.invoke('mysql:getViews', database),
+  getViewDefinition: (database: any, viewName: any) => ipcRenderer.invoke('mysql:getViewDefinition', database, viewName),
+  getFunctions: (database: any) => ipcRenderer.invoke('mysql:getFunctions', database),
+  getFunctionDefinition: (database: any, functionName: any) => ipcRenderer.invoke('mysql:getFunctionDefinition', database, functionName),
+  getProcedures: (database: any) => ipcRenderer.invoke('mysql:getProcedures', database),
+  getProcedureDefinition: (database: any, procedureName: any) => ipcRenderer.invoke('mysql:getProcedureDefinition', database, procedureName),
+  getEvents: (database: any) => ipcRenderer.invoke('mysql:getEvents', database),
+  getEventDefinition: (database: any, eventName: any) => ipcRenderer.invoke('mysql:getEventDefinition', database, eventName),
+  storeConfig: (config: any) => ipcRenderer.invoke('mysql:store-config', config),
+  getConnections: () => ipcRenderer.invoke('store:get-connections'),
+  saveConnection: (name: string, config: any) => ipcRenderer.invoke('store:save-connection', name, config),
+  deleteConnection: (name: string) => ipcRenderer.invoke('store:delete-connection', name),
+  insertRow: (database: string, table: string, data: any) => ipcRenderer.invoke('mysql:insertRow', database, table, data),
+  updateRow: (database: string, table: string, primaryKey: string, primaryKeyValue: any, data: any) => ipcRenderer.invoke('mysql:updateRow', database, table, primaryKey, primaryKeyValue, data),
+  deleteRow: (database: string, table: string, primaryKey: string, primaryKeyValue: any) => ipcRenderer.invoke('mysql:deleteRow', database, table, primaryKey, primaryKeyValue),
+  generateSyncPlan: (source: any, target: any, options: any) => ipcRenderer.invoke('mysql:generateSyncPlan', source, target, options),
+  executeSyncPlan: (target: any, plan: string[]) => ipcRenderer.invoke('mysql:executeSyncPlan', target, plan),
+  exportDatabase: (database: string, exportType: 'structure' | 'data' | 'both') => ipcRenderer.invoke('mysql:exportDatabase', database, exportType),
+  executeQuery: (query: string) => ipcRenderer.invoke('mysql:executeQuery', query),
+});

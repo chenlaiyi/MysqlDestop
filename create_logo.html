@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create Logo</title>
+</head>
+<body>
+    <canvas id="canvas" width="128" height="128"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 创建红色渐变背景
+        const gradient = ctx.createRadialGradient(64, 64, 20, 64, 64, 64);
+        gradient.addColorStop(0, '#ff4444');
+        gradient.addColorStop(1, '#cc0000');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 128, 128);
+        
+        // 添加数据库图标
+        ctx.fillStyle = 'white';
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 3;
+        
+        // 绘制数据库圆柱体
+        ctx.beginPath();
+        ctx.ellipse(64, 40, 30, 10, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        ctx.fillRect(34, 40, 60, 40);
+        
+        ctx.beginPath();
+        ctx.ellipse(64, 80, 30, 10, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // 绘制分隔线
+        ctx.strokeStyle = '#cc0000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(34, 55);
+        ctx.lineTo(94, 55);
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.moveTo(34, 65);
+        ctx.lineTo(94, 65);
+        ctx.stroke();
+        
+        // 导出为PNG
+        const link = document.createElement('a');
+        link.download = 'logo.png';
+        link.href = canvas.toDataURL('image/png');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        console.log('Logo created and downloaded!');
+    </script>
+</body>
+</html>
