@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Alert, Button, Fab } from '@mui/material';
-import { Add as AddIcon } from '@mui/icons-material';
+import { Box, Typography, Alert, Button, IconButton, Tooltip } from '@mui/material';
+import { Add as AddIcon, Brightness4 as DarkModeIcon } from '@mui/icons-material';
 import DatabaseNavigator from './DatabaseNavigator';
 import ModernDataTable from './ModernDataTable';
-import EnhancedQueryEditor from './EnhancedQueryEditor';
-import PerformanceMonitor from './PerformanceMonitor';
+import SuperSQLEditor from './SuperSQLEditor';
+import SuperPerformanceMonitor from './SuperPerformanceMonitor';
+import SuperConnectionWizard from './SuperConnectionWizard';
 import EditRowModal from './EditRowModal';
 import ConfirmationDialog from './ConfirmationDialog';
 import CreateTableModal from './CreateTableModal';
@@ -14,6 +15,7 @@ import DatabaseBackupModal from './DatabaseBackupModal';
 import ViewsPanel from './ViewsPanel';
 import FunctionsPanel from './FunctionsPanel';
 import EventsPanel from './EventsPanel';
+import TablesOverview from './TablesOverview';
 import { t } from '../i18n';
 
 interface ModernMainViewProps {
@@ -21,6 +23,10 @@ interface ModernMainViewProps {
 }
 
 function ModernMainView({ databases }: ModernMainViewProps) {
+  if (!databases) {
+    console.warn('数据库列表为空');
+  }
+  
   const [selectedDatabase, setSelectedDatabase] = useState<string | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [tables, setTables] = useState<{ [key: string]: any[] }>({});
@@ -42,6 +48,7 @@ function ModernMainView({ databases }: ModernMainViewProps) {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalRows, setTotalRows] = useState(0);
   const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState(false); // 新增：连接错误状态
   const [rowsToDelete, setRowsToDelete] = useState<any[] | null>(null); // 批量删除的行
   const [isBatchDeleteDialogOpen, setIsBatchDeleteDialogOpen] = useState(false); // 批量删除确认对话框
 
@@ -89,11 +96,25 @@ function ModernMainView({ databases }: ModernMainViewProps) {
       if (result.success) {
         setTableData(result.data || []);
         setTotalRows(result.totalCount || 0);
+        setConnectionError(false); // 成功时清除连接错误状态
       } else {
         setError(result.error || t('mainView.failedToLoadTableData'));
+        // 检查是否是连接相关错误
+        if ((result as any).needsReconnect) {
+          setConnectionError(true);
+        }
       }
     } catch (err: any) {
       setError(err.message || t('connectionForm.anUnknownErrorOccurred'));
+      // 检查是否是连接相关错误
+      if (err.message && (
+        err.message.includes('Connection lost') ||
+        err.message.includes('ECONNRESET') ||
+        err.message.includes('timeout') ||
+        err.message.includes('PROTOCOL_CONNECTION_LOST')
+      )) {
+        setConnectionError(true);
+      }
     } finally {
       setLoadingTableData(null);
     }
@@ -180,6 +201,31 @@ function ModernMainView({ databases }: ModernMainViewProps) {
     } finally {
       setIsConfirmDialogOpen(false);
       setRowToDelete(null);
+    }
+  };
+
+  // 新增：重连数据库
+  const handleReconnect = async (): Promise<boolean> => {
+    try {
+      const result = await window.mysqlApi.reconnect();
+      if (result.success) {
+        setConnectionError(false);
+        setError(null);
+        return true;
+      } else {
+        setError(result.error || '重连失败');
+        return false;
+      }
+    } catch (error: any) {
+      setError(error.message || '重连过程中发生错误');
+      return false;
+    }
+  };
+
+  // 新增：刷新当前表数据
+  const handleRefreshData = () => {
+    if (selectedDatabase && selectedTable) {
+      handleTableClick(selectedDatabase, selectedTable, page, rowsPerPage);
     }
   };
 
@@ -273,6 +319,11 @@ function ModernMainView({ databases }: ModernMainViewProps) {
     
     // Handle different feature selections
     switch (feature) {
+      case 'tables':
+        // 显示表概览，不需要特殊处理
+        setShowQueryEditor(false);
+        setShowPerformanceMonitor(false);
+        break;
       case 'views':
         setShowQueryEditor(false);
         setShowPerformanceMonitor(false);
@@ -299,198 +350,391 @@ function ModernMainView({ databases }: ModernMainViewProps) {
   };
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh', bgcolor: '#ffffff' }}>
-      {/* Left Navigation */}
-      <DatabaseNavigator
-        databases={databases}
-        selectedDatabase={selectedDatabase}
-        selectedTable={selectedTable}
-        tables={tables}
-        onDatabaseSelect={handleDatabaseClick}
-        onTableSelect={handleTableClick}
-        onDatabaseFeatureSelect={handleDatabaseFeatureSelect}
-        onRefresh={() => window.location.reload()}
-      />
+    <Box sx={{ 
+      display: 'flex', 
+      height: '100vh', 
+      bgcolor: '#121212'
+    }}>
+      {/* Left Navigation - 深色主题 */}
+      <Box sx={{
+        width: 320,
+        bgcolor: '#2d2d2d',
+        borderRight: '1px solid #444444',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
+        <DatabaseNavigator
+          databases={databases}
+          selectedDatabase={selectedDatabase}
+          selectedTable={selectedTable}
+          tables={tables}
+          onDatabaseSelect={handleDatabaseClick}
+          onTableSelect={handleTableClick}
+          onDatabaseFeatureSelect={handleDatabaseFeatureSelect}
+          onRefresh={() => window.location.reload()}
+        />
+      </Box>
 
-      {/* Main Content Area */}
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', bgcolor: '#ffffff' }}>
+      {/* Main Content Area - Enhanced with modern card design */}
+      <Box sx={{ 
+        flex: 1, 
+        display: 'flex', 
+        flexDirection: 'column', 
+        overflow: 'hidden', 
+        bgcolor: '#f8f9fa',
+        position: 'relative'
+      }}>
+        {/* Top Toolbar */}
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          p: 2, 
+          bgcolor: 'background.paper',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          boxShadow: 1
+        }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            {selectedDatabase ? `数据库: ${selectedDatabase}` : 'MySQL 客户端'}
+            {selectedTable && ` / 表: ${selectedTable}`}
+          </Typography>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Tooltip title="主题切换">
+              <IconButton 
+                size="medium"
+                sx={{
+                  color: 'text.primary',
+                  '&:hover': {
+                    backgroundColor: 'action.hover',
+                  },
+                }}
+              >
+                <DarkModeIcon />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </Box>
+
         {error && (
           <Alert 
             severity="error" 
-            sx={{ m: 2 }} 
+            sx={{ 
+              m: 3,
+              borderRadius: 2,
+              boxShadow: '0 4px 12px rgba(244, 67, 54, 0.15)',
+              border: '1px solid #ffebee'
+            }} 
             onClose={() => setError(null)}
           >
             {error}
           </Alert>
         )}
 
-        {/* Toolbar */}
+        {/* Enhanced Toolbar with modern card design */}
         <Box sx={{ 
-          p: 2, 
-          borderBottom: 1, 
-          borderColor: '#e0e0e0', 
-          display: 'flex', 
-          gap: 1, 
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          bgcolor: '#ffffff'
+          p: 3, 
+          bgcolor: '#ffffff',
+          borderBottom: '1px solid #e3e8ee',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
         }}>
-          <Button 
-            variant="outlined" 
-            onClick={() => setIsDatabaseBackupModalOpen(true)}
-            sx={{ 
-              color: '#1976d2',
-              borderColor: '#1976d2',
-              '&:hover': {
-                bgcolor: '#f5f5f5',
-                borderColor: '#1565c0'
+          <Box sx={{
+            display: 'flex', 
+            gap: 2, 
+            flexWrap: 'wrap',
+            alignItems: 'center'
+          }}>
+            <Typography variant="h6" sx={{ 
+              color: '#2c3e50',
+              fontWeight: 600,
+              mr: 'auto'
+            }}>
+              {selectedDatabase && selectedTable 
+                ? `${selectedDatabase} → ${selectedTable}` 
+                : selectedDatabase 
+                  ? selectedDatabase
+                  : '数据库管理'
               }
-            }}
-          >
-            {t('databaseBackup.backupDatabase')}
-          </Button>
-          
-          {selectedTable && tableData && (
+            </Typography>
+            
             <Button 
               variant="outlined" 
-              onClick={() => setIsDataExportModalOpen(true)}
+              onClick={() => setIsDatabaseBackupModalOpen(true)}
               sx={{ 
-                color: '#1976d2',
-                borderColor: '#1976d2',
+                color: '#3498db',
+                borderColor: '#3498db',
+                borderRadius: 2,
+                px: 3,
                 '&:hover': {
-                  bgcolor: '#f5f5f5',
-                  borderColor: '#1565c0'
-                }
+                  bgcolor: '#ebf3fd',
+                  borderColor: '#2980b9',
+                  transform: 'translateY(-1px)',
+                  boxShadow: '0 4px 12px rgba(52, 152, 219, 0.15)'
+                },
+                transition: 'all 0.2s ease'
               }}
             >
-              {t('dataExport.exportData')}
+              {t('databaseBackup.backupDatabase')}
             </Button>
-          )}
-          
-          <Button 
-            variant="outlined"
-            onClick={() => setIsSyncWizardOpen(true)}
-            sx={{ 
-              color: '#1976d2',
-              borderColor: '#1976d2',
-              '&:hover': {
-                bgcolor: '#f5f5f5',
-                borderColor: '#1565c0'
-              }
-            }}
-          >
-            {t('mainView.synchronize')}
-          </Button>
-          
-          <Button 
-            variant={showPerformanceMonitor ? "contained" : "outlined"}
-            onClick={() => setShowPerformanceMonitor(!showPerformanceMonitor)}
-            sx={{ 
-              color: showPerformanceMonitor ? '#ffffff' : '#1976d2',
-              backgroundColor: showPerformanceMonitor ? '#1976d2' : 'transparent',
-              borderColor: '#1976d2',
-              '&:hover': {
-                bgcolor: showPerformanceMonitor ? '#1565c0' : '#f5f5f5',
-                borderColor: '#1565c0'
-              }
-            }}
-          >
-            {t('performanceMonitor.title')}
-          </Button>
-          
-          <Button 
-            variant={showQueryEditor ? "contained" : "outlined"}
-            onClick={() => setShowQueryEditor(!showQueryEditor)}
-            sx={{ 
-              color: showQueryEditor ? '#ffffff' : '#1976d2',
-              backgroundColor: showQueryEditor ? '#1976d2' : 'transparent',
-              borderColor: '#1976d2',
-              '&:hover': {
-                bgcolor: showQueryEditor ? '#1565c0' : '#f5f5f5',
-                borderColor: '#1565c0'
-              }
-            }}
-          >
-            {t('queryEditor.sqlQueryEditor')}
-          </Button>
+            
+            {selectedTable && tableData && (
+              <Button 
+                variant="outlined" 
+                onClick={() => setIsDataExportModalOpen(true)}
+                sx={{ 
+                  color: '#27ae60',
+                  borderColor: '#27ae60',
+                  borderRadius: 2,
+                  px: 3,
+                  '&:hover': {
+                    bgcolor: '#eafaf1',
+                    borderColor: '#229954',
+                    transform: 'translateY(-1px)',
+                    boxShadow: '0 4px 12px rgba(39, 174, 96, 0.15)'
+                  },
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {t('dataExport.exportData')}
+              </Button>
+            )}
+            
+            <Button 
+              variant="outlined"
+              onClick={() => setIsSyncWizardOpen(true)}
+              sx={{ 
+                color: '#9b59b6',
+                borderColor: '#9b59b6',
+                borderRadius: 2,
+                px: 3,
+                '&:hover': {
+                  bgcolor: '#f4f1f7',
+                  borderColor: '#8e44ad',
+                  transform: 'translateY(-1px)',
+                  boxShadow: '0 4px 12px rgba(155, 89, 182, 0.15)'
+                },
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {t('mainView.synchronize')}
+            </Button>
+            
+            <Button 
+              variant={showPerformanceMonitor ? "contained" : "outlined"}
+              onClick={() => setShowPerformanceMonitor(!showPerformanceMonitor)}
+              sx={{ 
+                color: showPerformanceMonitor ? '#ffffff' : '#e67e22',
+                backgroundColor: showPerformanceMonitor ? '#e67e22' : 'transparent',
+                borderColor: '#e67e22',
+                borderRadius: 2,
+                px: 3,
+                '&:hover': {
+                  bgcolor: showPerformanceMonitor ? '#d35400' : '#fef9e7',
+                  borderColor: '#d35400',
+                  transform: 'translateY(-1px)',
+                  boxShadow: `0 4px 12px ${showPerformanceMonitor ? 'rgba(230, 126, 34, 0.3)' : 'rgba(230, 126, 34, 0.15)'}`
+                },
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {t('performanceMonitor.title')}
+            </Button>
+            
+            <Button 
+              variant={showQueryEditor ? "contained" : "outlined"}
+              onClick={() => setShowQueryEditor(!showQueryEditor)}
+              sx={{ 
+                color: showQueryEditor ? '#ffffff' : '#e74c3c',
+                backgroundColor: showQueryEditor ? '#e74c3c' : 'transparent',
+                borderColor: '#e74c3c',
+                borderRadius: 2,
+                px: 3,
+                '&:hover': {
+                  bgcolor: showQueryEditor ? '#c0392b' : '#fdedec',
+                  borderColor: '#c0392b',
+                  transform: 'translateY(-1px)',
+                  boxShadow: `0 4px 12px ${showQueryEditor ? 'rgba(231, 76, 60, 0.3)' : 'rgba(231, 76, 60, 0.15)'}`
+                },
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {t('queryEditor.sqlQueryEditor')}
+            </Button>
+          </Box>
         </Box>
 
-        {/* Content */}
-        <Box sx={{ flex: 1, overflow: 'auto', bgcolor: '#ffffff' }}>
+        {/* Content with enhanced styling */}
+        <Box sx={{ 
+          flex: 1, 
+          overflow: 'auto', 
+          bgcolor: '#f8f9fa',
+          p: 3
+        }}>
           {showPerformanceMonitor && (
-            <PerformanceMonitor currentDatabase={selectedDatabase} />
+            <Box sx={{
+              bgcolor: '#ffffff',
+              borderRadius: 3,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+              overflow: 'hidden'
+            }}>
+              <SuperPerformanceMonitor currentDatabase={selectedDatabase || undefined} />
+            </Box>
           )}
           
           {showQueryEditor && (
-            <EnhancedQueryEditor currentDatabase={selectedDatabase} />
+            <Box sx={{
+              bgcolor: '#ffffff',
+              borderRadius: 3,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+              overflow: 'hidden'
+            }}>
+              <SuperSQLEditor currentDatabase={selectedDatabase} />
+            </Box>
           )}
 
           {/* Views Panel */}
           {!showQueryEditor && !showPerformanceMonitor && selectedFeature === 'views' && selectedDatabase && (
-            <ViewsPanel 
-              database={selectedDatabase}
-              onViewSelect={(viewName, viewData) => {
-                console.log('Selected view:', viewName, viewData);
-                // TODO: Handle view selection (e.g., show view data)
-              }}
-            />
+            <Box sx={{
+              bgcolor: '#ffffff',
+              borderRadius: 3,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+              overflow: 'hidden'
+            }}>
+              <ViewsPanel 
+                database={selectedDatabase}
+                onViewSelect={(viewName, viewData) => {
+                  console.log('Selected view:', viewName, viewData);
+                  // TODO: Handle view selection (e.g., show view data)
+                }}
+              />
+            </Box>
           )}
 
           {/* Functions Panel */}
           {!showQueryEditor && !showPerformanceMonitor && selectedFeature === 'functions' && selectedDatabase && (
-            <FunctionsPanel 
-              database={selectedDatabase}
-              onFunctionSelect={(functionName, functionData) => {
-                console.log('Selected function:', functionName, functionData);
-                // TODO: Handle function selection (e.g., show function details)
-              }}
-            />
+            <Box sx={{
+              bgcolor: '#ffffff',
+              borderRadius: 3,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+              overflow: 'hidden'
+            }}>
+              <FunctionsPanel 
+                database={selectedDatabase}
+                onFunctionSelect={(functionName, functionData) => {
+                  console.log('Selected function:', functionName, functionData);
+                  // TODO: Handle function selection (e.g., show function details)
+                }}
+              />
+            </Box>
           )}
 
           {/* Events Panel */}
           {!showQueryEditor && !showPerformanceMonitor && selectedFeature === 'events' && selectedDatabase && (
-            <EventsPanel 
-              database={selectedDatabase}
-              onEventSelect={(eventName, eventData) => {
-                console.log('Selected event:', eventName, eventData);
-                // TODO: Handle event selection (e.g., show event details)
-              }}
-            />
+            <Box sx={{
+              bgcolor: '#ffffff',
+              borderRadius: 3,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+              overflow: 'hidden'
+            }}>
+              <EventsPanel 
+                database={selectedDatabase}
+                onEventSelect={(eventName, eventData) => {
+                  console.log('Selected event:', eventName, eventData);
+                  // TODO: Handle event selection (e.g., show event details)
+                }}
+              />
+            </Box>
+          )}
+
+          {/* Tables Overview Panel */}
+          {!showQueryEditor && !showPerformanceMonitor && selectedFeature === 'tables' && selectedDatabase && (
+            <Box sx={{
+              bgcolor: '#ffffff',
+              borderRadius: 3,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+              overflow: 'hidden',
+              height: 'calc(100% - 24px)'
+            }}>
+              <TablesOverview 
+                database={selectedDatabase}
+                tables={tables[selectedDatabase] || []}
+                onTableSelect={(tableName) => handleTableClick(selectedDatabase, tableName)}
+                onRefresh={() => handleDatabaseClick(selectedDatabase)}
+                loading={loadingTables === selectedDatabase}
+              />
+            </Box>
           )}
           
           {!showQueryEditor && !showPerformanceMonitor && !selectedFeature && selectedTable && tableData && (
-            <ModernDataTable
-              data={tableData}
-              totalCount={totalRows}
-              page={page}
-              rowsPerPage={rowsPerPage}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-              onAddRow={() => handleOpenModal(null)}
-              onEditRow={(row) => handleOpenModal(row)}
-              onDeleteRow={handleDeleteRow}
-              onDeleteRows={handleDeleteRows} // 新增：批量删除
-              onExportData={() => setIsDataExportModalOpen(true)}
-              onUpdateCell={handleUpdateCell}
-              tableName={selectedTable}
-              loading={loadingTableData === `${selectedDatabase}.${selectedTable}`}
-            />
+            <Box sx={{
+              bgcolor: '#ffffff',
+              borderRadius: 3,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+              overflow: 'hidden'
+            }}>
+                            <ModernDataTable
+                data={tableData}
+                totalCount={totalRows}
+                page={page}
+                rowsPerPage={rowsPerPage}
+                onPageChange={handleChangePage}
+                onRowsPerPageChange={handleChangeRowsPerPage}
+                onAddRow={() => handleOpenModal(null)}
+                onEditRow={(row: any) => handleOpenModal(row)}
+                onDeleteRow={(row: any) => handleDeleteRow(row)}
+                onExportData={() => setIsDataExportModalOpen(true)}
+                onRefreshData={() => selectedDatabase && selectedTable && handleTableClick(selectedDatabase, selectedTable)}
+                tableName={selectedTable || undefined}
+                loading={loadingTableData !== null}
+              />
+            </Box>
           )}
 
           {!showQueryEditor && !showPerformanceMonitor && !selectedFeature && !selectedTable && (
             <Box sx={{ 
-              p: 4, 
+              bgcolor: '#ffffff',
+              borderRadius: 3,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+              p: 6, 
               textAlign: 'center',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              height: '100%'
+              height: 'calc(100% - 48px)',
+              background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)'
             }}>
-              <Typography variant="h4" color="text.secondary" gutterBottom>
+              <Box sx={{
+                width: 120,
+                height: 120,
+                borderRadius: '50%',
+                bgcolor: '#f8f9fa',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                mb: 3,
+                boxShadow: '0 8px 32px rgba(0,0,0,0.1)'
+              }}>
+                <Typography sx={{ fontSize: 48, color: '#bdc3c7' }}>📊</Typography>
+              </Box>
+              <Typography variant="h4" sx={{ 
+                color: '#2c3e50',
+                fontWeight: 600,
+                mb: 2
+              }}>
                 {t('mainView.welcomeMessage')}
               </Typography>
-              <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+              <Typography variant="body1" sx={{ 
+                color: '#7f8c8d',
+                mb: 4,
+                maxWidth: 400,
+                lineHeight: 1.6,
+                fontFamily: 'Tapgo, "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Arial", sans-serif',
+                fontSize: '1.1rem',
+                fontWeight: 500
+              }}>
                 {t('mainView.selectTableToView')}
               </Typography>
               {selectedDatabase && (
@@ -498,6 +742,23 @@ function ModernMainView({ databases }: ModernMainViewProps) {
                   variant="contained"
                   startIcon={<AddIcon />}
                   onClick={() => setIsCreateTableModalOpen(true)}
+                  sx={{
+                    bgcolor: '#3498db',
+                    color: '#ffffff',
+                    borderRadius: 2,
+                    px: 4,
+                    py: 1.5,
+                    fontSize: '1rem',
+                    fontWeight: 500,
+                    textTransform: 'none',
+                    boxShadow: '0 4px 16px rgba(52, 152, 219, 0.3)',
+                    '&:hover': {
+                      bgcolor: '#2980b9',
+                      transform: 'translateY(-2px)',
+                      boxShadow: '0 8px 24px rgba(52, 152, 219, 0.4)'
+                    },
+                    transition: 'all 0.3s ease'
+                  }}
                 >
                   {t('mainView.createTable')}
                 </Button>
@@ -506,18 +767,6 @@ function ModernMainView({ databases }: ModernMainViewProps) {
           )}
         </Box>
       </Box>
-
-      {/* Floating Action Button */}
-      {selectedTable && !showQueryEditor && !showPerformanceMonitor && !selectedFeature && (
-        <Fab
-          color="primary"
-          aria-label="add"
-          sx={{ position: 'fixed', bottom: 16, right: 16 }}
-          onClick={() => handleOpenModal(null)}
-        >
-          <AddIcon />
-        </Fab>
-      )}
 
       {/* Modals */}
       <EditRowModal

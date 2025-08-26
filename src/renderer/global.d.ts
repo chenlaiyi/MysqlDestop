@@ -3,6 +3,7 @@ declare global {
     mysqlApi: {
       connect: (config: any) => Promise<{ success: boolean; error?: string; data?: any[] }>;
       getTables: (database: string) => Promise<{ success: boolean; error?: string; data?: any[] }>;
+      getTableDetails: (database: string) => Promise<{ success: boolean; error?: string; data?: any[] }>;
       getTableData: (database: string, table: string, limit?: number, offset?: number) => Promise<{ success: boolean; error?: string; data?: any[]; totalCount?: number }>;
       storeConfig: (config: any) => Promise<{ success: boolean }>;
       getConnections: () => Promise<{[key: string]: any}>;
@@ -26,6 +27,9 @@ declare global {
       createTable: (dbName: string, tableName: string, columns: { name: string, type: string, primaryKey: boolean, autoIncrement: boolean, nullable: boolean }[]) => Promise<{ success: boolean; error?: string }>;
       dropTable: (dbName: string, tableName: string) => Promise<{ success: boolean; error?: string }>;
       exportDatabase: (database: string, exportType: 'structure' | 'data' | 'both') => Promise<{ success: boolean; error?: string; data?: string }>;
+      // 新增：连接健康检查和重连
+      checkHealth: () => Promise<{ success: boolean; error?: string; isHealthy?: boolean; lastCheckTime?: number; config?: any }>;
+      reconnect: () => Promise<{ success: boolean; error?: string; message?: string }>;
     };
   }
 }

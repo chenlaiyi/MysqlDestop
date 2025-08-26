@@ -3,7 +3,7 @@ import path from 'path';
 import mysql from 'mysql2/promise';
 import Store from 'electron-store';
 import { format } from 'sql-formatter';
-import { getConnectionPool, closeAllPools } from './connectionManager';
+import { getConnectionPool, closeAllPools, checkConnectionHealth, recreatePool, getConnectionStatus } from './connectionManager';
 
 // 区分开发和生产环境的配置
 const storeOptions = {
@@ -69,23 +69,101 @@ ipcMain.handle('store:remove-favorite-sql', (event, query: string) => {
 let currentConnectionConfig: any = null;
 
 ipcMain.handle('mysql:store-config', (event, config) => {
-  currentConnectionConfig = config;
-  return { success: true };
+  try {
+    // 提取有效的MySQL连接配置
+    const mysqlConfig = {
+      host: config.host,
+      port: config.port,
+      user: config.user,
+      password: config.password,
+      database: config.database,
+      ssl: config.ssl
+    };
+    
+    currentConnectionConfig = mysqlConfig;
+    
+    // 保存完整配置到持久化存储（包含UI相关字段）
+    const connections = (store as any).get('connections', {});
+    const connectionKey = config.connectionName || `${config.user}@${config.host}:${config.port}`;
+    connections[connectionKey] = config; // 保存完整配置用于UI显示
+    (store as any).set('connections', connections);
+    
+    console.log('连接配置已保存:', connectionKey);
+    return { success: true };
+  } catch (error: any) {
+    console.error('保存连接配置失败:', error.message);
+    return { success: false, error: error.message };
+  }
 });
 
 ipcMain.handle('mysql:connect', async (event, config) => {
   let connection: mysql.PoolConnection | undefined;
   try {
+    console.log('尝试连接MySQL:', { host: config.host, port: config.port, user: config.user });
+    
     const pool = getConnectionPool(config);
     connection = await pool.getConnection();
+    
+    console.log('MySQL连接成功，正在获取数据库列表...');
     const [rows] = await connection.execute('SHOW DATABASES;');
+    console.log('数据库列表查询结果:', rows);
+    
     connection.release();
     return { success: true, data: rows };
   } catch (error) {
     const err = error as Error;
+    console.error('MySQL连接失败:', err.message);
     return { success: false, error: err.message };
   } finally {
     if (connection) connection.release();
+  }
+});
+
+// 新增：检查连接健康状态
+ipcMain.handle('mysql:checkHealth', async (event) => {
+  try {
+    if (!currentConnectionConfig) {
+      return { success: false, error: 'No active connection configuration found.' };
+    }
+    
+    const isHealthy = await checkConnectionHealth(currentConnectionConfig);
+    const status = getConnectionStatus(currentConnectionConfig);
+    
+    return { 
+      success: true, 
+      isHealthy, 
+      lastCheckTime: status.lastCheckTime,
+      config: currentConnectionConfig 
+    };
+  } catch (error) {
+    const err = error as Error;
+    return { success: false, error: err.message };
+  }
+});
+
+// 新增：重新连接数据库
+ipcMain.handle('mysql:reconnect', async (event) => {
+  try {
+    if (!currentConnectionConfig) {
+      return { success: false, error: 'No active connection configuration found.' };
+    }
+    
+    console.log('尝试重新连接MySQL...');
+    
+    // 重建连接池
+    const pool = recreatePool(currentConnectionConfig);
+    
+    // 测试连接
+    const connection = await pool.getConnection();
+    await connection.ping();
+    connection.release();
+    
+    console.log('MySQL重连成功');
+    return { success: true, message: '重连成功' };
+  } catch (error) {
+    const err = error as Error;
+    console.error('MySQL重连失败:', err.message);
+    return { success: false, error: err.message };
   }
 });
 
@@ -171,36 +249,124 @@ ipcMain.handle('mysql:getTables', async (event, database) => {
   }
 });
 
-ipcMain.handle('mysql:getTableData', async (event, database, table, limit?: number, offset?: number) => {
-  console.log('Received request for data from table:', table, 'in database:', database, 'limit:', limit, 'offset:', offset);
-  let connection: mysql.PoolConnection | undefined;
+// 新增：获取表的详细信息
+ipcMain.handle('mysql:getTableDetails', async (event, database) => {
+  console.log('Received request for table details in database:', database);
   try {
     if (!currentConnectionConfig) {
       throw new Error('No active connection configuration found.');
     }
     const pool = getConnectionPool({ ...currentConnectionConfig, database });
-    connection = await pool.getConnection();
-    let querySql = `SELECT * FROM ??`;
-    const queryParams = [table];
-
-    if (limit !== undefined && offset !== undefined) {
-      querySql += ` LIMIT ? OFFSET ?`;
-      queryParams.push(limit, offset);
-    }
-
-    const [rows] = await connection.query(querySql, queryParams);
-
-    // Get total count for pagination
-    const [countRows] = await connection.query(`SELECT COUNT(*) as count FROM ??`, [table]) as any[];
-    const totalCount = countRows[0].count;
-
+    const connection = await pool.getConnection();
+    
+    // 使用 INFORMATION_SCHEMA 获取详细的表信息
+    const [rows] = await connection.execute(`
+      SELECT 
+        TABLE_NAME as name,
+        ENGINE as engine,
+        TABLE_ROWS as rows,
+        DATA_LENGTH as data_length,
+        INDEX_LENGTH as index_length,
+        AUTO_INCREMENT as auto_increment,
+        CREATE_TIME as create_time,
+        UPDATE_TIME as update_time,
+        TABLE_COMMENT as table_comment
+      FROM INFORMATION_SCHEMA.TABLES 
+      WHERE TABLE_SCHEMA = ?
+      ORDER BY TABLE_NAME
+    `, [database]);
+    
     connection.release();
-    return { success: true, data: rows, totalCount };
+    return { success: true, data: rows };
   } catch (error) {
     const err = error as Error;
     return { success: false, error: err.message };
-  } finally {
-    if (connection) connection.release();
+  }
+});
+
+ipcMain.handle('mysql:getTableData', async (event, database, table, limit?: number, offset?: number) => {
+  console.log('Received request for data from table:', table, 'in database:', database, 'limit:', limit, 'offset:', offset);
+  let connection: mysql.PoolConnection | undefined;
+  let retryCount = 0;
+  const maxRetries = 2;
+
+  const attemptQuery = async (): Promise<any> => {
+    try {
+      if (!currentConnectionConfig) {
+        throw new Error('No active connection configuration found.');
+      }
+
+      // 检查连接健康状态
+      const isHealthy = await checkConnectionHealth(currentConnectionConfig);
+      if (!isHealthy && retryCount === 0) {
+        console.log('连接不健康，尝试重建连接池...');
+        recreatePool(currentConnectionConfig);
+      }
+
+      const pool = getConnectionPool({ ...currentConnectionConfig, database });
+      connection = await pool.getConnection();
+      
+      let querySql = `SELECT * FROM ??`;
+      const queryParams = [table];
+
+      if (limit !== undefined && offset !== undefined) {
+        querySql += ` LIMIT ? OFFSET ?`;
+        queryParams.push(limit, offset);
+      }
+
+      const [rows] = await connection.query(querySql, queryParams);
+
+      // Get total count for pagination
+      const [countRows] = await connection.query(`SELECT COUNT(*) as count FROM ??`, [table]) as any[];
+      const totalCount = countRows[0].count;
+
+      connection.release();
+      return { success: true, data: rows, totalCount };
+    } catch (error) {
+      if (connection) {
+        connection.release();
+        connection = undefined;
+      }
+
+      const err = error as Error;
+      console.error(`查询失败 (尝试 ${retryCount + 1}/${maxRetries + 1}):`, err.message);
+
+      // 检查是否是连接相关错误且还有重试机会
+      if (retryCount < maxRetries && (
+        err.message.includes('Connection lost') ||
+        err.message.includes('ECONNRESET') ||
+        err.message.includes('PROTOCOL_CONNECTION_LOST') ||
+        err.message.includes('timeout')
+      )) {
+        retryCount++;
+        console.log(`连接错误，准备第 ${retryCount} 次重试...`);
+        
+        // 重建连接池
+        recreatePool(currentConnectionConfig);
+        
+        // 等待一段时间再重试
+        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+        
+        return attemptQuery();
+      }
+
+      // 如果不是连接错误或者已经达到最大重试次数，直接抛出错误
+      throw error;
+    }
+  };
+
+  try {
+    return await attemptQuery();
+  } catch (error) {
+    const err = error as Error;
+    return { 
+      success: false, 
+      error: err.message,
+      needsReconnect: err.message.includes('Connection lost') || 
+                     err.message.includes('ECONNRESET') || 
+                     err.message.includes('PROTOCOL_CONNECTION_LOST') ||
+                     err.message.includes('timeout')
+    };
   }
 });
 
@@ -755,7 +921,7 @@ function createWindow() {
     width: 1200,
     height: 800,
     title: '点点够MySQL客户端',
-    icon: path.join(__dirname, '../../assets/logo.png'),
+    icon: path.join(__dirname, '../../build/icons/icon.icns'),
     show: false, // 延迟显示，等待加载完成
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -770,9 +936,31 @@ function createWindow() {
     },
   });
 
+  // 设置CSP策略
+  win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+          "style-src 'self' 'unsafe-inline' data:; " +
+          "img-src 'self' data: blob:; " +
+          "font-src 'self' data:; " +
+          "connect-src 'self' ws: wss:;"
+        ]
+      }
+    });
+  });
+
   // 窗口加载完成后显示
   win.once('ready-to-show', () => {
     win.show();
+    
+    // 只在开发环境下自动打开开发者工具
+    if (process.env.NODE_ENV === 'development') {
+      win.webContents.openDevTools();
+    }
     
     // 可选：启动时聚焦窗口
     if (process.platform === 'darwin') {

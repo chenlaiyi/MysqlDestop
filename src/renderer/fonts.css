@@ -1,0 +1,17 @@
+@font-face {
+  font-family: 'Tapgo';
+  src: url('../../assets/tapgo.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Tapgo';
+  src: url('../../assets/tapgoB.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+.tapgo-font {
+  font-family: 'Tapgo', "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Arial", sans-serif;
+}

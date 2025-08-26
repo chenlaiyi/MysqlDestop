@@ -42,7 +42,9 @@
     "selectDatabaseToCreateTable": "请选择一个数据库来创建表。",
     "failedToCreateTable": "创建表失败。",
     "confirmDeleteTableTitle": "确认删除表",
-    "areYouSureToDeleteTable": "您确定要从数据库 '{dbName}' 中删除表 '{tableName}' 吗？此操作无法撤消。"
+    "areYouSureToDeleteTable": "您确定要从数据库 '{dbName}' 中删除表 '{tableName}' 吗？此操作无法撤消。",
+    "welcomeMessage": "点点够，让你的数据库管理更高效",
+    "selectTableToView": "每天进步一点点，实现富而喜悦人生"
   },
   "createTableModal": {
     "createTable": "创建表",
@@ -178,5 +180,24 @@
     "noData": "无数据",
     "noDataDescription": "此表为空。添加一些数据以开始使用。",
     "addFirstRow": "添加第一行"
+  },
+  "tablesOverview": {
+    "title": "表概览",
+    "searchTables": "搜索表名或注释...",
+    "tableName": "表名",
+    "engine": "引擎",
+    "rows": "行数",
+    "dataSize": "数据大小",
+    "indexSize": "索引大小",
+    "autoIncrement": "自增值",
+    "createTime": "创建时间",
+    "comment": "注释",
+    "actions": "操作",
+    "viewData": "查看数据",
+    "editStructure": "编辑结构",
+    "deleteTable": "删除表",
+    "refreshTables": "刷新表信息",
+    "noTablesFound": "未找到匹配的表",
+    "noTablesInDatabase": "该数据库中没有表"
   }
 }

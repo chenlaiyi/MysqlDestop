@@ -1,139 +1,272 @@
 import React, { useState, useEffect } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import Box from '@mui/material/Box';
 import ConnectionForm from './components/ConnectionForm';
 import ModernMainView from './components/ModernMainView';
+import ExactMainView from './components/ExactMainView';
 import WelcomeScreen from './components/WelcomeScreen';
 
-const lightTheme = createTheme({
+// 简化的暗色主题
+const theme = createTheme({
   palette: {
-    mode: 'light',
+    mode: 'dark',
     primary: {
       main: '#1976d2',
-      dark: '#1565c0',
-      light: '#42a5f5',
     },
     secondary: {
-      main: '#9c27b0',
+      main: '#dc004e',
     },
     background: {
-      default: '#ffffff',
-      paper: '#ffffff',
+      default: '#121212',
+      paper: '#1e1e1e',
     },
     text: {
-      primary: '#000000',
-      secondary: '#424242',
+      primary: '#ffffff',
+      secondary: '#b3b3b3',
     },
   },
+  typography: {
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  },
   components: {
-    MuiCssBaseline: {
+    MuiButton: {
       styleOverrides: {
-        body: {
-          backgroundColor: '#ffffff',
-          color: '#000000',
+        root: {
+          textTransform: 'none',
         },
       },
-    },
-    MuiTableCell: {
-      styleOverrides: {
-        head: {
-          backgroundColor: '#f5f5f5',
-          color: '#000000',
-          fontWeight: 'bold',
-          borderBottom: '2px solid #e0e0e0',
-        },
-        body: {
-          color: '#000000',
-          borderBottom: '1px solid #e0e0e0',
-        }
-      }
     },
     MuiPaper: {
       styleOverrides: {
         root: {
-          backgroundColor: '#ffffff',
-          color: '#000000',
-        }
-      }
+          backgroundImage: 'none',
+        },
+      },
     },
-    MuiAppBar: {
-      styleOverrides: {
-        root: {
-          backgroundColor: '#ffffff',
-          color: '#000000',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-        }
-      }
-    }
-  }
+  },
 });
 
-function App() {
-  const [currentView, setCurrentView] = useState<'welcome' | 'connection' | 'main'>('welcome');
-  const [connected, setConnected] = useState(false);
-  const [databases, setDatabases] = useState<any[]>([]);
-  const [hasSavedConnections, setHasSavedConnections] = useState(false);
+interface ConnectionProfile {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  database?: string;
+  ssl?: boolean;
+  connectionLimit?: number;
+  timeout?: number;
+  description?: string;
+  tags?: string[];
+  lastUsed?: Date;
+  favorite?: boolean;
+}
 
-  // 检查是否有保存的连接
+type ViewType = 'welcome' | 'connection' | 'main';
+
+function App() {
+  const [currentView, setCurrentView] = useState<ViewType>('welcome');
+  const [connected, setConnected] = useState(false);
+  const [databases, setDatabases] = useState<string[]>([]);
+  const [savedProfiles, setSavedProfiles] = useState<ConnectionProfile[]>([]);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectingProfile, setConnectingProfile] = useState<ConnectionProfile | null>(null);
+
+  // 加载保存的连接
   useEffect(() => {
-    const checkSavedConnections = async () => {
+    const loadConnections = async () => {
       try {
-        if (window.mysqlApi && window.mysqlApi.getConnections) {
-          const connections = await window.mysqlApi.getConnections();
-          setHasSavedConnections(Object.keys(connections).length > 0);
+        const api = (window as any).electronAPI;
+        if (api?.loadConnections) {
+          const savedConnections = await api.loadConnections();
+          const profiles = savedConnections.map((config: any) => ({
+            id: config.id || Date.now().toString(),
+            name: config.name,
+            host: config.host,
+            port: config.port,
+            username: config.user,
+            password: config.password,
+            database: config.database,
+            ssl: config.ssl,
+            lastUsed: config.lastUsed ? new Date(config.lastUsed) : undefined,
+            favorite: config.favorite || false,
+            tags: config.tags || [],
+            description: config.description
+          }));
+          setSavedProfiles(profiles);
         }
       } catch (error) {
-        console.log('检查保存连接时出错:', error);
+        console.log('加载保存连接时出错:', error);
       }
     };
-    checkSavedConnections();
+    loadConnections();
   }, []);
 
-  const handleGetStarted = () => {
+  const handleNewConnection = () => {
     setCurrentView('connection');
   };
 
-  const handleQuickConnect = () => {
-    // 直接跳转到连接表单，用户可以从保存的连接中选择
-    setCurrentView('connection');
-  };
-
-  const handleConnect = async (config: any) => {
-    const result = await window.mysqlApi.connect(config);
-    if (result.success) {
-      await window.mysqlApi.storeConfig(config);
-      setConnected(true);
-      setDatabases(result.data || []);
-      setCurrentView('main');
+  const handleConnect = async (profile: ConnectionProfile) => {
+    console.log('连接到:', profile.name || `${profile.username}@${profile.host}`);
+    setIsConnecting(true);
+    setConnectingProfile(profile);
+    
+    try {
+      const api = (window as any).electronAPI;
+      if (api?.connect) {
+        const config = {
+          host: profile.host,
+          port: profile.port,
+          user: profile.username,
+          password: profile.password,
+          database: profile.database,
+          ssl: profile.ssl
+        };
+        
+        console.log('尝试连接MySQL:', config);
+        const result = await api.connect(config);
+        console.log('连接结果:', result);
+        
+        if (result.success) {
+          setConnected(true);
+          setDatabases(result.databases || []);
+          setCurrentView('main');
+          
+          // 保存连接配置
+          const connectionToSave = {
+            ...config,
+            name: profile.name,
+            id: profile.id,
+            lastUsed: new Date().toISOString(),
+            favorite: profile.favorite,
+            tags: profile.tags,
+            description: profile.description
+          };
+          
+          if (api?.saveConnection) {
+            await api.saveConnection(connectionToSave);
+          }
+        } else {
+          alert(`连接失败: ${result.error}`);
+        }
+      }
+    } catch (error) {
+      console.error('连接错误:', error);
+      alert(`连接失败: ${error}`);
+    } finally {
+      setIsConnecting(false);
+      setConnectingProfile(null);
     }
-    return result;
+  };
+
+  const wrappedHandleConnect = (profile: ConnectionProfile) => {
+    console.log('App wrappedHandleConnect 被调用:', profile.name);
+    handleConnect(profile);
+  };
+
+  const handleConnectFromForm = async (formData: any) => {
+    const profile: ConnectionProfile = {
+      id: Date.now().toString(),
+      name: formData.name || `${formData.username}@${formData.host}`,
+      host: formData.host,
+      port: formData.port,
+      username: formData.username,
+      password: formData.password,
+      database: formData.database,
+      ssl: formData.ssl
+    };
+    
+    console.log('从表单连接:', profile);
+    await handleConnect(profile);
+    return { success: true };
+  };
+
+  const handleEditConnection = (profile: ConnectionProfile) => {
+    console.log('编辑连接:', profile);
+    // 这里可以实现编辑功能
+  };
+
+  const handleDeleteConnection = async (profileId: string) => {
+    try {
+      const api = (window as any).electronAPI;
+      if (api?.deleteConnection) {
+        await api.deleteConnection(profileId);
+        setSavedProfiles(prev => prev.filter(p => p.id !== profileId));
+      }
+    } catch (error) {
+      console.error('删除连接失败:', error);
+    }
+  };
+
+  const handleToggleFavorite = async (profileId: string) => {
+    try {
+      setSavedProfiles(prev => 
+        prev.map(p => 
+          p.id === profileId ? { ...p, favorite: !p.favorite } : p
+        )
+      );
+    } catch (error) {
+      console.error('切换收藏状态失败:', error);
+    }
   };
 
   const renderCurrentView = () => {
+    console.log('App renderCurrentView - 当前视图:', currentView, '已连接:', connected, '数据库数量:', databases.length);
+    
     switch (currentView) {
       case 'welcome':
         return <WelcomeScreen 
-          onGetStarted={handleGetStarted} 
-          hasSavedConnections={hasSavedConnections}
-          onQuickConnect={handleQuickConnect}
+          onConnect={wrappedHandleConnect}
+          onNewConnection={handleNewConnection}
+          onEditConnection={handleEditConnection}
+          savedProfiles={savedProfiles}
+          onDeleteConnection={handleDeleteConnection}
+          onToggleFavorite={handleToggleFavorite}
+          isConnecting={isConnecting}
+          connectingProfile={connectingProfile?.name}
         />;
       case 'connection':
-        return <ConnectionForm onConnect={handleConnect} />;
+        return <ConnectionForm onConnect={handleConnectFromForm} />;
       case 'main':
-        return <ModernMainView databases={databases} />;
+        if (!connected) {
+          console.warn('未连接但试图显示主视图，回到欢迎界面');
+          setCurrentView('welcome');
+          return <WelcomeScreen 
+            onConnect={handleConnect}
+            onNewConnection={handleNewConnection}
+            onEditConnection={handleEditConnection}
+            savedProfiles={savedProfiles}
+            onDeleteConnection={handleDeleteConnection}
+            onToggleFavorite={handleToggleFavorite}
+            isConnecting={isConnecting}
+            connectingProfile={connectingProfile?.name}
+          />;
+        }
+        
+        return <ExactMainView databases={databases} />;
       default:
+        console.log('渲染默认 WelcomeScreen');
         return <WelcomeScreen 
-          onGetStarted={handleGetStarted}
-          hasSavedConnections={hasSavedConnections}
-          onQuickConnect={handleQuickConnect}
+          onConnect={wrappedHandleConnect}
+          onNewConnection={handleNewConnection}
+          onEditConnection={handleEditConnection}
+          savedProfiles={savedProfiles}
+          onDeleteConnection={handleDeleteConnection}
+          onToggleFavorite={handleToggleFavorite}
+          isConnecting={isConnecting}
+          connectingProfile={connectingProfile?.name}
         />;
     }
   };
 
   return (
-    <ThemeProvider theme={lightTheme}>
+    <ThemeProvider theme={theme}>
       <CssBaseline />
-      {renderCurrentView()}
+      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+        {renderCurrentView()}
+      </Box>
     </ThemeProvider>
   );
 }

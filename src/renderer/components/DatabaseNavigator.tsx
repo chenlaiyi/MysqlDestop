@@ -102,226 +102,204 @@ function DatabaseNavigator({
 
   return (
     <Box sx={{ 
-      width: 280, 
+      width: '100%', 
       height: '100%', 
-      bgcolor: '#ffffff',
-      borderRight: 1,
-      borderColor: '#e0e0e0',
+      bgcolor: '#2B3A4A',  // 深蓝色背景
       display: 'flex',
-      flexDirection: 'column'
+      flexDirection: 'column',
+      borderRight: '1px solid #555555'
     }}>
-      {/* Header */}
-      <Box sx={{ p: 2, borderBottom: 1, borderColor: '#e0e0e0' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-          <StorageIcon sx={{ color: '#1976d2' }} />
-          <Typography variant="h6" sx={{ flex: 1, color: '#000000' }}>
-            {t('navigator.databases')}
-          </Typography>
-          <IconButton 
-            size="small" 
-            onClick={onRefresh}
-            sx={{ 
-              color: '#666666',
-              '&:hover': {
-                backgroundColor: '#f5f5f5'
-              }
-            }}
-          >
-            <RefreshIcon fontSize="small" />
-          </IconButton>
-        </Box>
-        
+      {/* 搜索框区域 */}
+      <Box sx={{ 
+        p: 1.5, 
+        borderBottom: '1px solid #555555',
+      }}>
         <TextField
           size="small"
           fullWidth
-          placeholder={t('navigator.searchDatabases')}
+          placeholder="搜索数据库..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <SearchIcon fontSize="small" sx={{ color: '#666666' }} />
+                <SearchIcon fontSize="small" sx={{ color: '#CCCCCC' }} />
               </InputAdornment>
             ),
           }}
           sx={{
             '& .MuiOutlinedInput-root': {
-              backgroundColor: '#ffffff',
+              backgroundColor: '#3E3E3E',
+              borderRadius: 1,
+              height: 28,
               '& fieldset': {
-                borderColor: '#e0e0e0',
+                borderColor: '#555555',
               },
               '&:hover fieldset': {
-                borderColor: '#1976d2',
+                borderColor: '#4A90E2',
               },
               '&.Mui-focused fieldset': {
-                borderColor: '#1976d2',
+                borderColor: '#4A90E2',
+                borderWidth: 1
               },
             },
             '& .MuiInputBase-input': {
-              color: '#000000',
+              color: '#ffffff',
+              fontSize: '0.8rem',
+              padding: '4px 8px'
             }
           }}
         />
       </Box>
 
-      {/* Database List */}
-      <Box sx={{ flex: 1, overflow: 'auto', bgcolor: '#ffffff' }}>
-        <List dense disablePadding>
+      {/* 数据库列表 */}
+      <Box sx={{ 
+        flex: 1, 
+        overflow: 'auto',
+        '&::-webkit-scrollbar': {
+          width: 4
+        },
+        '&::-webkit-scrollbar-track': {
+          bgcolor: '#2B3A4A'
+        },
+        '&::-webkit-scrollbar-thumb': {
+          bgcolor: '#555555',
+          borderRadius: 2,
+          '&:hover': {
+            bgcolor: '#666666'
+          }
+        }
+      }}>
+        {filteredDatabases.length === 0 ? (
+          <Box sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '200px',
+            px: 2,
+            textAlign: 'center'
+          }}>
+            <StorageIcon sx={{ fontSize: 32, color: '#666666', mb: 1 }} />
+            <Typography variant="body2" sx={{ color: '#CCCCCC' }}>
+              暂无数据库
+            </Typography>
+          </Box>
+        ) : (
+          <List dense disablePadding>
           {filteredDatabases.map((db) => {
             const dbName = db.Database;
             const isExpanded = expandedDatabases.has(dbName);
             const dbTables = tables[dbName] || [];
+            const isDatabaseSelected = selectedDatabase === dbName;
             
             return (
               <React.Fragment key={dbName}>
-                {/* Database Header */}
+                {/* 数据库节点 */}
                 <ListItem disablePadding>
                   <ListItemButton
                     onClick={() => toggleDatabase(dbName)}
-                    selected={selectedDatabase === dbName && !selectedTable}
+                    selected={isDatabaseSelected && !selectedTable}
                     sx={{
-                      pl: 2,
-                      bgcolor: selectedDatabase === dbName && !selectedTable ? '#e3f2fd' : 'transparent',
+                      py: 0.5,
+                      px: 1.5,
+                      minHeight: 24,
                       '&:hover': {
-                        bgcolor: '#f5f5f5'
+                        bgcolor: '#3A4A5A',
                       },
                       '&.Mui-selected': {
-                        bgcolor: '#e3f2fd',
+                        bgcolor: '#4A90E2',
                         '&:hover': {
-                          bgcolor: '#e3f2fd'
+                          bgcolor: '#357ABD'
                         }
-                      }
+                      },
                     }}
                   >
-                    <ListItemIcon sx={{ minWidth: 32 }}>
+                    <ListItemIcon sx={{ minWidth: 24, mr: 0.5 }}>
                       <DatabaseIcon 
                         fontSize="small" 
                         sx={{ 
-                          color: selectedDatabase === dbName ? '#1976d2' : '#666666' 
+                          color: isDatabaseSelected ? '#ffffff' : '#4A90E2',
+                          fontSize: 14
                         }} 
                       />
                     </ListItemIcon>
                     <ListItemText 
                       primary={dbName}
                       primaryTypographyProps={{
-                        fontSize: '0.875rem',
-                        fontWeight: selectedDatabase === dbName ? 'medium' : 'normal',
-                        color: '#000000'
+                        fontSize: '0.8rem',
+                        fontWeight: isDatabaseSelected ? 500 : 400,
+                        color: isDatabaseSelected ? '#ffffff' : '#ffffff'
                       }}
                     />
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
                       {isExpanded ? 
-                        <ExpandLess fontSize="small" sx={{ color: '#666666' }} /> : 
-                        <ExpandMore fontSize="small" sx={{ color: '#666666' }} />
+                        <ExpandLess 
+                          fontSize="small" 
+                          sx={{ 
+                            color: isDatabaseSelected ? '#ffffff' : '#CCCCCC',
+                            fontSize: 14
+                          }} 
+                        /> : 
+                        <ExpandMore 
+                          fontSize="small" 
+                          sx={{ 
+                            color: isDatabaseSelected ? '#ffffff' : '#CCCCCC',
+                            fontSize: 14
+                          }} 
+                        />
                       }
                     </Box>
                   </ListItemButton>
                 </ListItem>
 
-                {/* Database Features */}
+                {/* 表列表 */}
                 <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                   <List component="div" disablePadding>
-                    {DATABASE_FEATURES.map((feature) => {
-                      const featureKey = `${dbName}-${feature.key}`;
-                      const isFeatureExpanded = expandedFeatures.has(featureKey);
-                      const FeatureIcon = feature.icon;
+                    {dbTables.map((table, index) => {
+                      const tableName = table.Tables_in_1 || table[Object.keys(table)[0]];
+                      const isTableSelected = selectedDatabase === dbName && selectedTable === tableName;
                       
                       return (
-                        <React.Fragment key={feature.key}>
-                          {/* Feature Category */}
-                          <ListItem disablePadding>
-                            <ListItemButton
-                              onClick={() => {
-                                if (feature.key === 'tables') {
-                                  toggleFeature(featureKey);
-                                } else {
-                                  handleFeatureClick(dbName, feature.key);
-                                }
-                              }}
-                              sx={{
-                                pl: 4,
-                                py: 0.5,
+                        <ListItem key={index} disablePadding>
+                          <ListItemButton
+                            onClick={() => handleTableSelect(dbName, tableName)}
+                            selected={isTableSelected}
+                            sx={{
+                              py: 0.25,
+                              px: 1,
+                              ml: 2.5,
+                              minHeight: 20,
+                              '&:hover': {
+                                bgcolor: '#3A4A5A',
+                              },
+                              '&.Mui-selected': {
+                                bgcolor: '#357ABD',
                                 '&:hover': {
-                                  bgcolor: 'action.hover'
+                                  bgcolor: '#2E6AA8'
                                 }
-                              }}
-                            >
-                              <ListItemIcon sx={{ minWidth: 28 }}>
-                                <FeatureIcon 
-                                  fontSize="small" 
-                                  color={feature.color as any}
-                                />
-                              </ListItemIcon>
-                              <ListItemText 
-                                primary={feature.label}
-                                primaryTypographyProps={{
-                                  fontSize: '0.8rem'
-                                }}
+                              },
+                            }}
+                          >
+                            <ListItemIcon sx={{ minWidth: 20, mr: 0.5 }}>
+                              <TableIcon 
+                                fontSize="small" 
+                                sx={{ 
+                                  color: isTableSelected ? '#ffffff' : '#4A90E2',
+                                  fontSize: 12
+                                }} 
                               />
-                              {feature.key === 'tables' && (
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  {dbTables.length > 0 && (
-                                    <Chip 
-                                      label={dbTables.length} 
-                                      size="small" 
-                                      variant="outlined"
-                                      sx={{ height: 18, fontSize: '0.7rem' }}
-                                    />
-                                  )}
-                                  {isFeatureExpanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
-                                </Box>
-                              )}
-                            </ListItemButton>
-                          </ListItem>
-
-                          {/* Tables List (only for tables feature) */}
-                          {feature.key === 'tables' && (
-                            <Collapse in={isFeatureExpanded} timeout="auto" unmountOnExit>
-                              <List component="div" disablePadding>
-                                {dbTables.map((table, index) => {
-                                  const tableName = table.name || table[Object.keys(table)[0]];
-                                  const isSelected = selectedDatabase === dbName && selectedTable === tableName;
-                                  
-                                  return (
-                                    <ListItem key={index} disablePadding>
-                                      <ListItemButton
-                                        onClick={() => handleTableSelect(dbName, tableName)}
-                                        selected={isSelected}
-                                        sx={{
-                                          pl: 6,
-                                          py: 0.25,
-                                          bgcolor: isSelected ? 'action.selected' : 'transparent',
-                                          '&:hover': {
-                                            bgcolor: 'action.hover'
-                                          }
-                                        }}
-                                      >
-                                        <ListItemIcon sx={{ minWidth: 24 }}>
-                                          <TableIcon fontSize="small" color="action" />
-                                        </ListItemIcon>
-                                        <ListItemText 
-                                          primary={tableName}
-                                          primaryTypographyProps={{
-                                            fontSize: '0.75rem',
-                                            color: isSelected ? 'primary.main' : 'text.primary'
-                                          }}
-                                        />
-                                        {table.rowCount !== undefined && (
-                                          <Chip 
-                                            label={table.rowCount} 
-                                            size="small" 
-                                            variant="outlined"
-                                            sx={{ height: 16, fontSize: '0.65rem' }}
-                                          />
-                                        )}
-                                      </ListItemButton>
-                                    </ListItem>
-                                  );
-                                })}
-                              </List>
-                            </Collapse>
-                          )}
-                        </React.Fragment>
+                            </ListItemIcon>
+                            <ListItemText 
+                              primary={tableName}
+                              primaryTypographyProps={{
+                                fontSize: '0.75rem',
+                                fontWeight: isTableSelected ? 500 : 400,
+                                color: isTableSelected ? '#ffffff' : '#ffffff'
+                              }}
+                            />
+                          </ListItemButton>
+                        </ListItem>
                       );
                     })}
                   </List>
@@ -330,6 +308,7 @@ function DatabaseNavigator({
             );
           })}
         </List>
+        )}
       </Box>
     </Box>
   );

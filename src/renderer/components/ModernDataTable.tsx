@@ -23,11 +23,15 @@ import {
   FormControl,
   InputLabel,
   Checkbox,
+  FormControlLabel,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogContentText,
-  DialogActions
+  DialogActions,
+  Alert,
+  Snackbar,
+  CircularProgress
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -42,7 +46,9 @@ import {
   LastPage as LastPageIcon,
   ChevronLeft as PrevPageIcon,
   ChevronRight as NextPageIcon,
-  Remove as RemoveIcon
+  Remove as RemoveIcon,
+  Refresh as RefreshIcon,
+  Warning as WarningIcon
 } from '@mui/icons-material';
 import { t } from '../i18n';
 
@@ -59,8 +65,11 @@ interface ModernDataTableProps {
   onDeleteRows?: (rows: any[]) => void; // 新增批量删除支持
   onExportData: () => void;
   onUpdateCell?: (rowIndex: number, column: string, value: any) => void;
+  onRefreshData?: () => void; // 新增：刷新数据回调
+  onReconnect?: () => Promise<boolean>; // 新增：重连回调
   tableName?: string;
   loading?: boolean;
+  connectionError?: boolean; // 新增：连接错误状态
 }
 
 function ModernDataTable({
@@ -76,8 +85,11 @@ function ModernDataTable({
   onDeleteRows,
   onExportData,
   onUpdateCell,
+  onRefreshData,
+  onReconnect,
   tableName,
-  loading = false
+  loading = false,
+  connectionError = false
 }: ModernDataTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -86,17 +98,43 @@ function ModernDataTable({
   const [editValue, setEditValue] = useState<any>('');
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  
+  // v1.0.4 新增：高级过滤功能
+  const [columnFilters, setColumnFilters] = useState<{[key: string]: string}>({});
+  const [filterMenuAnchor, setFilterMenuAnchor] = useState<null | HTMLElement>(null);
+  const [columnMenuAnchor, setColumnMenuAnchor] = useState<null | HTMLElement>(null);
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
 
-  const filteredData = data.filter(row =>
-    Object.values(row).some(value =>
-      String(value).toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  );
+  // 新增：重连相关状态
+  const [reconnecting, setReconnecting] = useState(false);
+  const [showReconnectDialog, setShowReconnectDialog] = useState(false);
+  const [reconnectMessage, setReconnectMessage] = useState('');
+  const [showSnackbar, setShowSnackbar] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'warning' | 'info'>('info');
 
-  // Apply pagination to filtered data
+  // v1.0.4 增强：支持全局搜索和列级过滤
+  const filteredData = data.filter(row => {
+    // 全局搜索
+    const matchesGlobalSearch = searchTerm === '' || 
+      Object.values(row).some(value =>
+        String(value).toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    
+    // 列级过滤
+    const matchesColumnFilters = Object.entries(columnFilters).every(([column, filter]) => {
+      if (!filter) return true;
+      const cellValue = String(row[column] || '').toLowerCase();
+      return cellValue.includes(filter.toLowerCase());
+    });
+    
+    return matchesGlobalSearch && matchesColumnFilters;
+  });
+
+  // Apply pagination to filtered data (fixed 1000 rows per page)
   const paginatedData = filteredData.slice(
-    page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
+    page * 1000,
+    page * 1000 + 1000
   );
 
   const columns = data.length > 0 ? Object.keys(data[0]) : [];
@@ -146,6 +184,49 @@ function ModernDataTable({
 
   const handleDeleteCancel = () => {
     setDeleteConfirmOpen(false);
+  };
+
+  // 新增：重连处理函数
+  const handleReconnect = async () => {
+    if (!onReconnect) return;
+    
+    setReconnecting(true);
+    setShowReconnectDialog(false);
+    
+    try {
+      const success = await onReconnect();
+      if (success) {
+        setSnackbarMessage('重连成功！');
+        setSnackbarSeverity('success');
+        setShowSnackbar(true);
+        
+        // 重连成功后刷新数据
+        if (onRefreshData) {
+          onRefreshData();
+        }
+      } else {
+        setSnackbarMessage('重连失败，请检查网络连接或数据库服务状态');
+        setSnackbarSeverity('error');
+        setShowSnackbar(true);
+      }
+    } catch (error) {
+      console.error('重连过程中发生错误:', error);
+      setSnackbarMessage('重连过程中发生错误');
+      setSnackbarSeverity('error');
+      setShowSnackbar(true);
+    } finally {
+      setReconnecting(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    if (onRefreshData) {
+      onRefreshData();
+    }
+  };
+
+  const showReconnectPrompt = () => {
+    setShowReconnectDialog(true);
   };
 
   const handleDeleteSelected = () => {
@@ -236,8 +317,12 @@ function ModernDataTable({
           autoFocus
           sx={{ 
             '& .MuiOutlinedInput-root': {
-              fontSize: '0.875rem',
+              fontSize: '0.55rem',
               minHeight: 'auto'
+            },
+            '& .MuiInputBase-input': {
+              padding: '0px 3px',
+              fontSize: '0.55rem'
             }
           }}
         />
@@ -341,8 +426,9 @@ function ModernDataTable({
           )}
         </Box>
 
-        {/* Right: Search */}
+        {/* Right: Enhanced Search and Filter */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          {/* Advanced Search */}
           <TextField
             size="small"
             placeholder={t('dataTable.searchInTable')}
@@ -354,9 +440,20 @@ function ModernDataTable({
                   <SearchIcon fontSize="small" sx={{ color: '#666666' }} />
                 </InputAdornment>
               ),
+              endAdornment: searchTerm && (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={() => setSearchTerm('')}
+                    sx={{ color: '#666666' }}
+                  >
+                    <RemoveIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ),
             }}
             sx={{ 
-              width: 200,
+              width: 240,
               '& .MuiOutlinedInput-root': {
                 backgroundColor: '#ffffff',
                 '& fieldset': {
@@ -375,6 +472,31 @@ function ModernDataTable({
             }}
           />
           
+          {/* Quick Filter */}
+          <Tooltip title="快速过滤选项">
+            <IconButton
+              size="small"
+              onClick={(e) => setFilterMenuAnchor(e.currentTarget)}
+              sx={{ 
+                color: Object.keys(columnFilters).length > 0 ? '#1976d2' : '#666666',
+                bgcolor: Object.keys(columnFilters).length > 0 ? '#e3f2fd' : 'transparent'
+              }}
+            >
+              <FilterIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          {/* Column Visibility */}
+          <Tooltip title="显示/隐藏列">
+            <IconButton
+              size="small"
+              onClick={(e) => setColumnMenuAnchor(e.currentTarget)}
+              sx={{ color: '#666666' }}
+            >
+              <ViewColumnIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          
           <Tooltip title={t('dataTable.export')}>
             <IconButton 
               onClick={onExportData} 
@@ -389,16 +511,77 @@ function ModernDataTable({
               <ExportIcon fontSize="small" />
             </IconButton>
           </Tooltip>
+
+          {/* 新增：刷新按钮 */}
+          <Tooltip title="刷新数据">
+            <IconButton 
+              onClick={handleRefresh} 
+              size="small"
+              disabled={loading || reconnecting}
+              sx={{ 
+                color: '#1976d2',
+                '&:hover': {
+                  backgroundColor: '#e3f2fd'
+                }
+              }}
+            >
+              <RefreshIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          {/* 新增：连接状态指示器 */}
+          {connectionError && (
+            <Tooltip title="数据库连接异常，点击重新连接">
+              <IconButton 
+                onClick={showReconnectPrompt} 
+                size="small"
+                disabled={reconnecting}
+                sx={{ 
+                  color: '#d32f2f',
+                  '&:hover': {
+                    backgroundColor: '#ffebee'
+                  }
+                }}
+              >
+                {reconnecting ? (
+                  <CircularProgress size={16} sx={{ color: '#d32f2f' }} />
+                ) : (
+                  <WarningIcon fontSize="small" />
+                )}
+              </IconButton>
+            </Tooltip>
+          )}
         </Box>
       </Box>
+
+      {/* 新增：连接状态提醒 */}
+      {connectionError && !showReconnectDialog && (
+        <Alert 
+          severity="warning" 
+          sx={{ mx: 2, mb: 1 }}
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              onClick={showReconnectPrompt}
+              disabled={reconnecting}
+              startIcon={reconnecting ? <CircularProgress size={16} /> : <RefreshIcon />}
+            >
+              {reconnecting ? '重连中...' : '重新连接'}
+            </Button>
+          }
+        >
+          数据库连接已断开，部分功能可能无法正常使用
+        </Alert>
+      )}
 
       {/* Table */}
       <TableContainer sx={{ maxHeight: 'calc(100vh - 200px)', bgcolor: '#ffffff' }}>
         <Table stickyHeader size="small" sx={{ 
           '& .MuiTableCell-root': { 
-            padding: '2px 6px', // 进一步减少内边距
-            fontSize: '0.7rem', // 更小的字体
-            lineHeight: 1.1,
+            padding: '0px 3px', // 进一步减少内边距
+            fontSize: '0.55rem', // 更小的字体
+            lineHeight: 0.8, // 进一步减少行高
             borderBottom: '1px solid #e0e0e0',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
@@ -406,21 +589,23 @@ function ModernDataTable({
             color: '#000000'
           },
           '& .MuiTableRow-root': {
-            height: 22, // 更紧凑的行高
+            height: 14, // 更紧凑的行高
+            minHeight: 14,
             '&:hover': {
               backgroundColor: '#f5f5f5',
             }
           },
           '& .MuiTableHead-root .MuiTableCell-root': {
-            padding: '3px 6px', // 表头也减少padding
-            fontSize: '0.7rem',
+            padding: '1px 3px', // 表头也减少padding
+            fontSize: '0.8rem', // 表头字体再大一些
             fontWeight: 600,
             backgroundColor: '#fafafa',
             borderBottom: '2px solid #e0e0e0',
-            color: '#000000'
+            color: '#000000',
+            height: 26 // 表头再高一些
           },
           '& .MuiCheckbox-root': {
-            padding: '1px',
+            padding: '0px',
             color: '#1976d2',
             '&.Mui-checked': {
               color: '#1976d2',
@@ -437,7 +622,7 @@ function ModernDataTable({
                   color: '#000000',
                   borderBottom: '2px solid #e0e0e0',
                   width: 40,
-                  padding: '3px 6px !important'
+                  padding: '1px 3px !important'
                 }}
               >
                 <Checkbox
@@ -446,7 +631,7 @@ function ModernDataTable({
                   checked={selectedRows.size === paginatedData.length && paginatedData.length > 0}
                   onChange={handleSelectAll}
                   sx={{ 
-                    padding: '1px',
+                    padding: '0px',
                     color: '#1976d2',
                     '&.Mui-checked': {
                       color: '#1976d2',
@@ -455,7 +640,8 @@ function ModernDataTable({
                 />
               </TableCell>
               
-              {columns.map((column) => (
+              {/* v1.0.4 增强：支持列隐藏 */}
+              {columns.filter(column => !hiddenColumns.has(column)).map((column) => (
                 <TableCell 
                   key={column}
                   sx={{ 
@@ -464,7 +650,7 @@ function ModernDataTable({
                     color: '#000000',
                     borderBottom: 1,
                     borderColor: 'divider',
-                    padding: '3px 6px !important',
+                    padding: '1px 3px !important',
                     '& .MuiTableCell-root': {
                       color: '#000000 !important'
                     }
@@ -481,7 +667,7 @@ function ModernDataTable({
                   borderBottom: 1,
                   borderColor: 'divider',
                   width: 50,
-                  padding: '3px 6px !important',
+                  padding: '1px 3px !important',
                   '& .MuiTableCell-root': {
                     color: '#000000 !important'
                   }
@@ -504,35 +690,40 @@ function ModernDataTable({
                   hover
                   selected={selectedRows.has(paginatedIndex)}
                   sx={{ 
-                    height: 32,
+                    height: 14,
+                    minHeight: 14,
                     '&:hover': { bgcolor: 'action.hover' },
                     '&.Mui-selected': { bgcolor: 'action.selected' },
                     '& .MuiTableCell-root': {
-                      padding: '4px 8px !important',
+                      padding: '0px 3px !important',
                       borderBottom: '1px solid rgba(224, 224, 224, 0.5)',
+                      fontSize: '0.55rem',
+                      height: 14,
+                      lineHeight: 0.8
                     }
                   }}
                 >
                   {/* Selection checkbox */}
-                  <TableCell sx={{ padding: '1px 6px !important', width: 40 }}>
+                  <TableCell sx={{ padding: '0px 3px !important', width: 40 }}>
                     <Checkbox
                       size="small"
                       checked={selectedRows.has(paginatedIndex)}
                       onChange={() => handleRowSelect(paginatedIndex)}
-                      sx={{ padding: '1px' }}
+                      sx={{ padding: '0px' }}
                     />
                   </TableCell>
                   
-                  {columns.map((column) => (
-                    <TableCell key={column} sx={{ padding: '1px 6px !important' }}>
+                  {/* v1.0.4 增强：支持列隐藏 */}
+                  {columns.filter(column => !hiddenColumns.has(column)).map((column) => (
+                    <TableCell key={column} sx={{ padding: '0px 3px !important' }}>
                       {renderCellValue(row[column], actualIndex, column)}
                     </TableCell>
                   ))}
-                  <TableCell sx={{ padding: '1px 6px !important', width: 50 }}>
+                  <TableCell sx={{ padding: '0px 3px !important', width: 50 }}>
                     <IconButton
                       size="small"
                       onClick={(e) => handleMenuOpen(e, row)}
-                      sx={{ padding: '1px' }}
+                      sx={{ padding: '0px' }}
                     >
                       <MoreIcon fontSize="small" />
                     </IconButton>
@@ -557,36 +748,17 @@ function ModernDataTable({
         minHeight: 48,
         gap: 1
       }}>
-        {/* Left: Rows per page */}
+        {/* Left: Fixed rows per page info */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 120 }}>
           <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-            每页行数
+            每页 1000 行
           </Typography>
-          <FormControl size="small" sx={{ minWidth: 80 }}>
-            <Select
-              value={rowsPerPage}
-              onChange={(e) => onRowsPerPageChange(Number(e.target.value))}
-              variant="outlined"
-              sx={{ 
-                '& .MuiSelect-select': { 
-                  py: 0.5,
-                  fontSize: '0.875rem'
-                }
-              }}
-            >
-              {[10, 25, 50, 100].map((option) => (
-                <MenuItem key={option} value={option}>
-                  {option}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
         </Box>
 
         {/* Center: Page info */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, justifyContent: 'center' }}>
           <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-            第 {page + 1} 页，共 {Math.ceil(filteredData.length / rowsPerPage)} 页
+            第 {page + 1} 页，共 {Math.ceil(filteredData.length / 1000)} 页
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mx: 1 }}>
             |
@@ -638,7 +810,7 @@ function ModernDataTable({
             value={page + 1}
             onChange={(e) => {
               const newPage = parseInt(e.target.value) - 1;
-              const maxPage = Math.ceil(filteredData.length / rowsPerPage) - 1;
+              const maxPage = Math.ceil(filteredData.length / 1000) - 1;
               if (!isNaN(newPage) && newPage >= 0 && newPage <= maxPage) {
                 onPageChange(newPage);
               }
@@ -662,7 +834,7 @@ function ModernDataTable({
               <IconButton 
                 size="small" 
                 onClick={() => onPageChange(page + 1)}
-                disabled={page >= Math.ceil(filteredData.length / rowsPerPage) - 1}
+                disabled={page >= Math.ceil(filteredData.length / 1000) - 1}
                 sx={{ 
                   '&:disabled': { 
                     color: 'action.disabled' 
@@ -678,8 +850,8 @@ function ModernDataTable({
             <span>
               <IconButton 
                 size="small" 
-                onClick={() => onPageChange(Math.ceil(filteredData.length / rowsPerPage) - 1)}
-                disabled={page >= Math.ceil(filteredData.length / rowsPerPage) - 1}
+                onClick={() => onPageChange(Math.ceil(filteredData.length / 1000) - 1)}
+                disabled={page >= Math.ceil(filteredData.length / 1000) - 1}
                 sx={{ 
                   '&:disabled': { 
                     color: 'action.disabled' 
@@ -753,6 +925,151 @@ function ModernDataTable({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* v1.0.4 新增：列过滤菜单 */}
+      <Menu
+        anchorEl={filterMenuAnchor}
+        open={Boolean(filterMenuAnchor)}
+        onClose={() => setFilterMenuAnchor(null)}
+        PaperProps={{
+          sx: { minWidth: 300, maxHeight: 400 }
+        }}
+      >
+        <Box sx={{ p: 2 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            列过滤器
+          </Typography>
+          {columns.map((column) => (
+            <TextField
+              key={column}
+              size="small"
+              label={column}
+              value={columnFilters[column] || ''}
+              onChange={(e) => setColumnFilters(prev => ({
+                ...prev,
+                [column]: e.target.value
+              }))}
+              sx={{ mb: 1, width: '100%' }}
+              InputProps={{
+                endAdornment: columnFilters[column] && (
+                  <InputAdornment position="end">
+                    <IconButton
+                      size="small"
+                      onClick={() => setColumnFilters(prev => {
+                        const newFilters = { ...prev };
+                        delete newFilters[column];
+                        return newFilters;
+                      })}
+                    >
+                      <RemoveIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+          ))}
+          <Button
+            size="small"
+            onClick={() => setColumnFilters({})}
+            sx={{ mt: 1 }}
+          >
+            清除所有过滤器
+          </Button>
+        </Box>
+      </Menu>
+
+      {/* v1.0.4 新增：列可见性菜单 */}
+      <Menu
+        anchorEl={columnMenuAnchor}
+        open={Boolean(columnMenuAnchor)}
+        onClose={() => setColumnMenuAnchor(null)}
+        PaperProps={{
+          sx: { minWidth: 250, maxHeight: 400 }
+        }}
+      >
+        <Box sx={{ p: 2 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            显示/隐藏列
+          </Typography>
+          {columns.map((column) => (
+            <FormControlLabel
+              key={column}
+              control={
+                <Checkbox
+                  size="small"
+                  checked={!hiddenColumns.has(column)}
+                  onChange={(e) => {
+                    const newHidden = new Set(hiddenColumns);
+                    if (e.target.checked) {
+                      newHidden.delete(column);
+                    } else {
+                      newHidden.add(column);
+                    }
+                    setHiddenColumns(newHidden);
+                  }}
+                />
+              }
+              label={column}
+              sx={{ display: 'block', mb: 0.5 }}
+            />
+          ))}
+          <Button
+            size="small"
+            onClick={() => setHiddenColumns(new Set())}
+            sx={{ mt: 1 }}
+          >
+            显示所有列
+          </Button>
+        </Box>
+      </Menu>
+
+      {/* 新增：重连确认对话框 */}
+      <Dialog
+        open={showReconnectDialog}
+        onClose={() => setShowReconnectDialog(false)}
+        aria-labelledby="reconnect-dialog-title"
+        aria-describedby="reconnect-dialog-description"
+      >
+        <DialogTitle id="reconnect-dialog-title">
+          数据库连接异常
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="reconnect-dialog-description">
+            检测到数据库连接已断开或超时。这可能是由于长时间未操作或网络问题导致的。
+            点击"重新连接"尝试恢复连接，或者点击"取消"继续当前操作。
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowReconnectDialog(false)} color="primary">
+            取消
+          </Button>
+          <Button 
+            onClick={handleReconnect} 
+            color="primary" 
+            variant="contained"
+            disabled={reconnecting}
+            startIcon={reconnecting ? <CircularProgress size={16} /> : <RefreshIcon />}
+          >
+            {reconnecting ? '重连中...' : '重新连接'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 新增：通知消息 */}
+      <Snackbar
+        open={showSnackbar}
+        autoHideDuration={4000}
+        onClose={() => setShowSnackbar(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={() => setShowSnackbar(false)} 
+          severity={snackbarSeverity}
+          sx={{ width: '100%' }}
+        >
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

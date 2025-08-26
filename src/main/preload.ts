@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('mysqlApi', {
   connect: (config: any) => ipcRenderer.invoke('mysql:connect', config),
   getTables: (database: any) => ipcRenderer.invoke('mysql:getTables', database),
+  getTableDetails: (database: any) => ipcRenderer.invoke('mysql:getTableDetails', database),
   getTableData: (database: any, table: any) => ipcRenderer.invoke('mysql:getTableData', database, table),
   getViews: (database: any) => ipcRenderer.invoke('mysql:getViews', database),
   getViewDefinition: (database: any, viewName: any) => ipcRenderer.invoke('mysql:getViewDefinition', database, viewName),
@@ -23,4 +24,7 @@ contextBridge.exposeInMainWorld('mysqlApi', {
   executeSyncPlan: (target: any, plan: string[]) => ipcRenderer.invoke('mysql:executeSyncPlan', target, plan),
   exportDatabase: (database: string, exportType: 'structure' | 'data' | 'both') => ipcRenderer.invoke('mysql:exportDatabase', database, exportType),
   executeQuery: (query: string) => ipcRenderer.invoke('mysql:executeQuery', query),
+  // 新增：连接健康检查和重连
+  checkHealth: () => ipcRenderer.invoke('mysql:checkHealth'),
+  reconnect: () => ipcRenderer.invoke('mysql:reconnect'),
 });
