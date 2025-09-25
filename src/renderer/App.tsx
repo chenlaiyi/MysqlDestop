@@ -78,25 +78,22 @@ function App() {
   useEffect(() => {
     const loadConnections = async () => {
       try {
-        const api = (window as any).electronAPI;
-        if (api?.loadConnections) {
-          const savedConnections = await api.loadConnections();
-          const profiles = savedConnections.map((config: any) => ({
-            id: config.id || Date.now().toString(),
-            name: config.name,
-            host: config.host,
-            port: config.port,
-            username: config.user,
-            password: config.password,
-            database: config.database,
-            ssl: config.ssl,
-            lastUsed: config.lastUsed ? new Date(config.lastUsed) : undefined,
-            favorite: config.favorite || false,
-            tags: config.tags || [],
-            description: config.description
-          }));
-          setSavedProfiles(profiles);
-        }
+        const savedConnections = await (window as any).mysqlApi.getConnections();
+        const profiles = Object.entries(savedConnections).map(([key, config]: [string, any]) => ({
+          id: config.id || key,
+          name: key,
+          host: config.host,
+          port: config.port,
+          username: config.user,
+          password: config.password,
+          database: config.database,
+          ssl: config.ssl,
+          lastUsed: config.lastUsed ? new Date(config.lastUsed) : undefined,
+          favorite: config.favorite || false,
+          tags: config.tags || [],
+          description: config.description
+        }));
+        setSavedProfiles(profiles);
       } catch (error) {
         console.log('加载保存连接时出错:', error);
       }
@@ -114,43 +111,40 @@ function App() {
     setConnectingProfile(profile);
     
     try {
-      const api = (window as any).electronAPI;
-      if (api?.connect) {
-        const config = {
-          host: profile.host,
-          port: profile.port,
-          user: profile.username,
-          password: profile.password,
-          database: profile.database,
-          ssl: profile.ssl
+      const config = {
+        host: profile.host,
+        port: profile.port,
+        user: profile.username,
+        password: profile.password,
+        database: profile.database,
+        ssl: profile.ssl
+      };
+      
+      console.log('尝试连接MySQL:', config);
+      const result = await (window as any).mysqlApi.connect(config);
+      console.log('连接结果:', result);
+      
+      if (result.success) {
+        setConnected(true);
+        // 从API返回的数据中提取数据库名称
+        const dbList = (result.data || []).map((row: any) => row.Database);
+        console.log('提取的数据库列表:', dbList);
+        setDatabases(dbList);
+        setCurrentView('main');
+        
+        // 更新连接的最后使用时间
+        const connectionName = profile.name;
+        const updatedConfig = {
+          ...config,
+          lastUsed: new Date().toISOString(),
+          favorite: profile.favorite,
+          tags: profile.tags,
+          description: profile.description
         };
         
-        console.log('尝试连接MySQL:', config);
-        const result = await api.connect(config);
-        console.log('连接结果:', result);
-        
-        if (result.success) {
-          setConnected(true);
-          setDatabases(result.databases || []);
-          setCurrentView('main');
-          
-          // 保存连接配置
-          const connectionToSave = {
-            ...config,
-            name: profile.name,
-            id: profile.id,
-            lastUsed: new Date().toISOString(),
-            favorite: profile.favorite,
-            tags: profile.tags,
-            description: profile.description
-          };
-          
-          if (api?.saveConnection) {
-            await api.saveConnection(connectionToSave);
-          }
-        } else {
-          alert(`连接失败: ${result.error}`);
-        }
+        await (window as any).mysqlApi.saveConnection(connectionName, updatedConfig);
+      } else {
+        alert(`连接失败: ${result.error}`);
       }
     } catch (error) {
       console.error('连接错误:', error);
@@ -190,9 +184,9 @@ function App() {
 
   const handleDeleteConnection = async (profileId: string) => {
     try {
-      const api = (window as any).electronAPI;
-      if (api?.deleteConnection) {
-        await api.deleteConnection(profileId);
+      const profile = savedProfiles.find(p => p.id === profileId);
+      if (profile) {
+        await (window as any).mysqlApi.deleteConnection(profile.name);
         setSavedProfiles(prev => prev.filter(p => p.id !== profileId));
       }
     } catch (error) {
@@ -213,8 +207,6 @@ function App() {
   };
 
   const renderCurrentView = () => {
-    console.log('App renderCurrentView - 当前视图:', currentView, '已连接:', connected, '数据库数量:', databases.length);
-    
     switch (currentView) {
       case 'welcome':
         return <WelcomeScreen 
@@ -247,7 +239,7 @@ function App() {
         
         return <ExactMainView databases={databases} />;
       default:
-        console.log('渲染默认 WelcomeScreen');
+
         return <WelcomeScreen 
           onConnect={wrappedHandleConnect}
           onNewConnection={handleNewConnection}

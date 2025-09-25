@@ -23,6 +23,8 @@ const ExactMainView: React.FC<ExactMainViewProps> = ({
   onDatabaseChange, 
   onTableChange 
 }) => {
+  console.log('ExactMainView 收到的数据库列表:', databases);
+  
   const [selectedDatabase, setSelectedDatabase] = useState<string | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -118,6 +120,7 @@ const ExactMainView: React.FC<ExactMainViewProps> = ({
           onDatabaseSelect={handleDatabaseSelect}
           onTableSelect={handleTableSelect}
           onRefresh={handleRefresh}
+          databases={databases}
           key={refreshKey}
         />
       </Box>

@@ -4,7 +4,15 @@ contextBridge.exposeInMainWorld('mysqlApi', {
   connect: (config: any) => ipcRenderer.invoke('mysql:connect', config),
   getTables: (database: any) => ipcRenderer.invoke('mysql:getTables', database),
   getTableDetails: (database: any) => ipcRenderer.invoke('mysql:getTableDetails', database),
-  getTableData: (database: any, table: any) => ipcRenderer.invoke('mysql:getTableData', database, table),
+  getTableData: (
+    database: any,
+    table: any,
+    limit?: number,
+    offset?: number,
+    orderBy?: string,
+    orderDirection?: 'asc' | 'desc',
+    searchTerm?: string
+  ) => ipcRenderer.invoke('mysql:getTableData', database, table, limit, offset, orderBy, orderDirection, searchTerm),
   getViews: (database: any) => ipcRenderer.invoke('mysql:getViews', database),
   getViewDefinition: (database: any, viewName: any) => ipcRenderer.invoke('mysql:getViewDefinition', database, viewName),
   getFunctions: (database: any) => ipcRenderer.invoke('mysql:getFunctions', database),

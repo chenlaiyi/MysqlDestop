@@ -108,6 +108,9 @@ ipcMain.handle('mysql:connect', async (event, config) => {
     const [rows] = await connection.execute('SHOW DATABASES;');
     console.log('数据库列表查询结果:', rows);
     
+    // 保存当前使用的连接配置，供后续查询使用
+    currentConnectionConfig = { ...config };
+
     connection.release();
     return { success: true, data: rows };
   } catch (error) {
@@ -284,8 +287,8 @@ ipcMain.handle('mysql:getTableDetails', async (event, database) => {
   }
 });
 
-ipcMain.handle('mysql:getTableData', async (event, database, table, limit?: number, offset?: number) => {
-  console.log('Received request for data from table:', table, 'in database:', database, 'limit:', limit, 'offset:', offset);
+ipcMain.handle('mysql:getTableData', async (event, database, table, limit?: number, offset?: number, orderBy?: string, orderDirection?: 'asc' | 'desc', searchTerm?: string) => {
+  console.log('Received request for data from table:', table, 'in database:', database, 'limit:', limit, 'offset:', offset, 'orderBy:', orderBy, 'orderDirection:', orderDirection, 'searchTerm:', searchTerm);
   let connection: mysql.PoolConnection | undefined;
   let retryCount = 0;
   const maxRetries = 2;
@@ -305,9 +308,42 @@ ipcMain.handle('mysql:getTableData', async (event, database, table, limit?: numb
 
       const pool = getConnectionPool({ ...currentConnectionConfig, database });
       connection = await pool.getConnection();
+
+      const [columnRows] = await connection.query(`SHOW COLUMNS FROM ??`, [table]) as any[];
+      const columnNames: string[] = (columnRows as any[]).map((row: any) => row.Field);
+      const searchableColumnsRaw: string[] = (columnRows as any[]) 
+        .filter((row: any) => row.Field && !/blob|binary|varbinary|geometry|json/i.test(row.Type || ''))
+        .map((row: any) => row.Field);
+      const searchableColumns = searchableColumnsRaw.length > 0 ? searchableColumnsRaw : columnNames;
+
+      const sanitizedOrderBy = orderBy && columnNames.includes(orderBy) ? orderBy : undefined;
+      const sanitizedOrderDirection = orderDirection === 'desc' ? 'DESC' : 'ASC';
+      const trimmedSearch = (searchTerm ?? '').trim();
+
+      let whereClause = '';
+      const searchParams: any[] = [];
+      if (trimmedSearch && searchableColumns.length > 0) {
+        const escapedSearch = trimmedSearch.replace(/([%_\\])/g, '\\$1');
+        const likePattern = `%${escapedSearch}%`;
+        const conditions = searchableColumns.map(() => '?? LIKE ? ESCAPE \'\\\\\'');
+        whereClause = ` WHERE ${conditions.join(' OR ')}`;
+        searchableColumns.forEach((col) => {
+          searchParams.push(col, likePattern);
+        });
+      }
       
       let querySql = `SELECT * FROM ??`;
-      const queryParams = [table];
+      const queryParams: any[] = [table];
+
+      if (whereClause) {
+        querySql += whereClause;
+        queryParams.push(...searchParams);
+      }
+
+      if (sanitizedOrderBy) {
+        querySql += ` ORDER BY ?? ${sanitizedOrderDirection}`;
+        queryParams.push(sanitizedOrderBy);
+      }
 
       if (limit !== undefined && offset !== undefined) {
         querySql += ` LIMIT ? OFFSET ?`;
@@ -317,11 +353,19 @@ ipcMain.handle('mysql:getTableData', async (event, database, table, limit?: numb
       const [rows] = await connection.query(querySql, queryParams);
 
       // Get total count for pagination
-      const [countRows] = await connection.query(`SELECT COUNT(*) as count FROM ??`, [table]) as any[];
-      const totalCount = countRows[0].count;
+      let countSql = `SELECT COUNT(*) as count FROM ??`;
+      const countParams: any[] = [table];
+      if (whereClause) {
+        countSql += whereClause;
+        countParams.push(...searchParams);
+      }
+
+      const [countRows] = await connection.query(countSql, countParams) as any[];
+      const totalCount = countRows[0]?.count ?? 0;
 
       connection.release();
-      return { success: true, data: rows, totalCount };
+      connection = undefined;
+      return { success: true, data: rows, totalCount, columns: columnNames };
     } catch (error) {
       if (connection) {
         connection.release();

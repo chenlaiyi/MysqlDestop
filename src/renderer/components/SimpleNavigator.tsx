@@ -28,6 +28,7 @@ interface SimpleNavigatorProps {
   onDatabaseSelect: (database: string) => void;
   onTableSelect: (database: string, table: string) => void;
   onRefresh: () => void;
+  databases?: string[];
 }
 
 const SimpleNavigator: React.FC<SimpleNavigatorProps> = ({
@@ -35,7 +36,8 @@ const SimpleNavigator: React.FC<SimpleNavigatorProps> = ({
   selectedTable,
   onDatabaseSelect,
   onTableSelect,
-  onRefresh
+  onRefresh,
+  databases: propDatabases = []
 }) => {
   const [databases, setDatabases] = useState<any[]>([]);
   const [tables, setTables] = useState<{ [key: string]: any[] }>({});
@@ -46,13 +48,22 @@ const SimpleNavigator: React.FC<SimpleNavigatorProps> = ({
   const loadDatabases = async () => {
     setLoading(true);
     try {
-      // 使用存储的连接配置重新连接并获取数据库列表
+      // 优先使用传入的数据库列表
+      if (propDatabases && propDatabases.length > 0) {
+        const dbList = propDatabases.map(db => ({ Database: db }));
+        setDatabases(dbList);
+        setLoading(false);
+        return;
+      }
+
+      // 如果没有传入数据库列表，则尝试从连接中获取
       const connections = await window.mysqlApi.getConnections();
-      if (connections && connections.length > 0) {
-        const config = connections[0]; // 使用第一个连接配置
+      const connectionEntries = Object.entries(connections || {});
+      if (connectionEntries.length > 0) {
+        const [, config] = connectionEntries[0]; // 使用第一个连接配置
         const result = await window.mysqlApi.connect(config);
         if (result.success) {
-          setDatabases(result.data || []);
+          setDatabases(result.data?.map((db: string) => ({ Database: db })) || []);
         }
       }
     } catch (err) {
@@ -76,6 +87,16 @@ const SimpleNavigator: React.FC<SimpleNavigatorProps> = ({
   useEffect(() => {
     loadDatabases();
   }, []);
+
+  // 当传入的数据库列表改变时，更新本地状态
+  useEffect(() => {
+    console.log('SimpleNavigator 收到的数据库列表:', propDatabases);
+    if (propDatabases && propDatabases.length > 0) {
+      const dbList = propDatabases.map(db => ({ Database: db }));
+      console.log('转换后的数据库列表:', dbList);
+      setDatabases(dbList);
+    }
+  }, [propDatabases]);
 
   const toggleDatabase = async (dbName: string) => {
     const newExpanded = new Set(expandedDatabases);

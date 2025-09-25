@@ -4,7 +4,15 @@ declare global {
       connect: (config: any) => Promise<{ success: boolean; error?: string; data?: any[] }>;
       getTables: (database: string) => Promise<{ success: boolean; error?: string; data?: any[] }>;
       getTableDetails: (database: string) => Promise<{ success: boolean; error?: string; data?: any[] }>;
-      getTableData: (database: string, table: string, limit?: number, offset?: number) => Promise<{ success: boolean; error?: string; data?: any[]; totalCount?: number }>;
+      getTableData: (
+        database: string,
+        table: string,
+        limit?: number,
+        offset?: number,
+        orderBy?: string,
+        orderDirection?: 'asc' | 'desc',
+        searchTerm?: string
+      ) => Promise<{ success: boolean; error?: string; data?: any[]; totalCount?: number; columns?: string[] }>;
       storeConfig: (config: any) => Promise<{ success: boolean }>;
       getConnections: () => Promise<{[key: string]: any}>;
       saveConnection: (name: string, config: any) => Promise<{ success: boolean }>;
