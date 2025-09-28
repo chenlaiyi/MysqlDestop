@@ -1,13 +1,44 @@
-import React, { useState, useEffect } from 'react';
-import { Box, Tab, Tabs, Typography, Paper, IconButton } from '@mui/material';
-import { Close as CloseIcon } from '@mui/icons-material';
+import React, { useState, useMemo, useEffect } from 'react';
+import {
+  Box,
+  Chip,
+  IconButton,
+  Tab,
+  Tabs,
+  Tooltip,
+  Typography,
+  Stack
+} from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
+import {
+  RefreshRounded as RefreshIcon,
+  VisibilityRounded as ViewIcon,
+  ContentCopyRounded as CopyIcon,
+  DownloadRounded as ExportIcon,
+  LaunchRounded as OpenIcon,
+  DeleteSweepRounded as ClearIcon,
+  AddRounded as AddIcon,
+  CloseRounded as CloseIcon
+} from '@mui/icons-material';
 import SimpleNavigator from './SimpleNavigator';
 import ExactDataTable from './ExactDataTable';
+import DatabaseObjectsView, { ObjectActionKey } from './DatabaseObjectsView';
+import { ConnectionProfile } from '../types';
 
 interface ExactMainViewProps {
-  databases: any[];
+  databases: string[];
+  savedProfiles: ConnectionProfile[];
+  activeProfile: ConnectionProfile | null;
+  connected: boolean;
+  isConnecting?: boolean;
+  onSelectProfile: (profileId: string) => void;
+  onNewConnection: () => void;
+  onToggleFavorite: (profileId: string) => void;
+  onDeleteProfile: (profileId: string) => void;
+  onRefreshDatabases: () => void;
   onDatabaseChange?: (database: string) => void;
   onTableChange?: (table: string) => void;
+  onDisconnect: () => void;
 }
 
 interface TabInfo {
@@ -18,20 +49,47 @@ interface TabInfo {
   closable: boolean;
 }
 
-const ExactMainView: React.FC<ExactMainViewProps> = ({ 
+const ExactMainView: React.FC<ExactMainViewProps> = ({
   databases,
-  onDatabaseChange, 
-  onTableChange 
+  savedProfiles,
+  activeProfile,
+  connected,
+  isConnecting,
+  onSelectProfile,
+  onNewConnection,
+  onToggleFavorite,
+  onDeleteProfile,
+  onRefreshDatabases,
+  onDatabaseChange,
+  onTableChange,
+  onDisconnect
 }) => {
-  console.log('ExactMainView 收到的数据库列表:', databases);
-  
+  const theme = useTheme();
+
   const [selectedDatabase, setSelectedDatabase] = useState<string | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [tabs, setTabs] = useState<TabInfo[]>([
-    { id: 'welcome', label: '开始页', closable: false }
+    { id: 'objects', label: '对象', closable: false }
   ]);
-  const [activeTab, setActiveTab] = useState('welcome');
+  const [activeTab, setActiveTab] = useState('objects');
+
+  useEffect(() => {
+    if (!connected) {
+      setSelectedDatabase(null);
+      setSelectedTable(null);
+      setTabs([{ id: 'objects', label: '对象', closable: false }]);
+      setActiveTab('objects');
+    }
+  }, [connected]);
+
+  useEffect(() => {
+    if (selectedDatabase && !databases.includes(selectedDatabase)) {
+      setSelectedDatabase(null);
+      setSelectedTable(null);
+      setActiveTab('objects');
+    }
+  }, [databases, selectedDatabase]);
 
   const handleDatabaseSelect = (database: string) => {
     setSelectedDatabase(database);
@@ -44,10 +102,9 @@ const ExactMainView: React.FC<ExactMainViewProps> = ({
     onDatabaseChange?.(database);
     onTableChange?.(table);
 
-    // 创建新的标签页
     const tabId = `${database}.${table}`;
-    const existingTab = tabs.find(tab => tab.id === tabId);
-    
+    const existingTab = tabs.find((tab) => tab.id === tabId);
+
     if (!existingTab) {
       const newTab: TabInfo = {
         id: tabId,
@@ -56,15 +113,34 @@ const ExactMainView: React.FC<ExactMainViewProps> = ({
         table,
         closable: true
       };
-      setTabs(prev => [...prev, newTab]);
+      setTabs((prev) => [...prev, newTab]);
     }
-    
+
     setActiveTab(tabId);
   };
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: string) => {
+  const handleOpenTableFromObjects = (tableName: string) => {
+    if (selectedDatabase) {
+      handleTableSelect(selectedDatabase, tableName);
+    }
+  };
+
+  const handleObjectsAction = (action: ObjectActionKey, tableName: string) => {
+    switch (action) {
+      case 'open':
+        handleOpenTableFromObjects(tableName);
+        break;
+      case 'refresh':
+        handleRefresh();
+        break;
+      default:
+        console.info(`Action "${action}" triggered for table ${tableName}`);
+    }
+  };
+
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: string) => {
     setActiveTab(newValue);
-    const tab = tabs.find(t => t.id === newValue);
+    const tab = tabs.find((t) => t.id === newValue);
     if (tab && tab.database && tab.table) {
       setSelectedDatabase(tab.database);
       setSelectedTable(tab.table);
@@ -74,101 +150,234 @@ const ExactMainView: React.FC<ExactMainViewProps> = ({
   };
 
   const handleTabClose = (tabId: string) => {
-    const tabToClose = tabs.find(tab => tab.id === tabId);
+    const tabToClose = tabs.find((tab) => tab.id === tabId);
     if (!tabToClose || !tabToClose.closable) return;
 
-    const newTabs = tabs.filter(tab => tab.id !== tabId);
+    const newTabs = tabs.filter((tab) => tab.id !== tabId);
     setTabs(newTabs);
 
     if (activeTab === tabId) {
-      const newActiveTab = newTabs.length > 0 ? newTabs[newTabs.length - 1].id : 'welcome';
-      setActiveTab(newActiveTab);
-      
-      const newTab = newTabs.find(t => t.id === newActiveTab);
-      if (newTab && newTab.database && newTab.table) {
-        setSelectedDatabase(newTab.database);
-        setSelectedTable(newTab.table);
-        onDatabaseChange?.(newTab.database);
-        onTableChange?.(newTab.table);
+      const fallbackTab = newTabs.length > 0 ? newTabs[newTabs.length - 1].id : 'objects';
+      setActiveTab(fallbackTab);
+      const fallback = newTabs.find((t) => t.id === fallbackTab);
+      if (fallback && fallback.database && fallback.table) {
+        setSelectedDatabase(fallback.database);
+        setSelectedTable(fallback.table);
+        onDatabaseChange?.(fallback.database);
+        onTableChange?.(fallback.table);
+      } else {
+        setSelectedTable(null);
       }
     }
   };
 
   const handleRefresh = () => {
-    setRefreshKey(prev => prev + 1);
+    setRefreshKey((prev) => prev + 1);
+    onRefreshDatabases();
   };
 
+  const infoSurface = 'linear-gradient(180deg, rgba(25,32,45,0.96) 0%, rgba(12,17,27,0.98) 100%)';
+  const borderColor = alpha(theme.palette.common.white, theme.palette.mode === 'dark' ? 0.06 : 0.12);
+  const headerBg = alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.32 : 0.06);
+  const toolbarBg = alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.36 : 0.08);
+
+  const workspaceActions = [
+    { key: 'refresh', label: '刷新', icon: <RefreshIcon fontSize="small" />, onClick: handleRefresh, color: '#2ea8ff' },
+    { key: 'open', label: '打开', icon: <OpenIcon fontSize="small" />, onClick: () => undefined, color: '#38cfff' },
+    { key: 'view', label: '预览', icon: <ViewIcon fontSize="small" />, onClick: () => undefined, color: '#ffd166' },
+    { key: 'export', label: '导出', icon: <ExportIcon fontSize="small" />, onClick: () => undefined, color: '#7a7cff' },
+    { key: 'copy', label: '复制', icon: <CopyIcon fontSize="small" />, onClick: () => undefined, color: '#38e0a2' },
+    { key: 'clear', label: '清除', icon: <ClearIcon fontSize="small" />, onClick: () => undefined, color: '#ff8f5a' },
+    { key: 'new', label: '新建', icon: <AddIcon fontSize="small" />, onClick: onNewConnection, color: '#9aff76' }
+  ];
+
+  const workspaceTitle = useMemo(() => {
+    if (activeTab === 'objects') {
+      if (selectedDatabase) {
+        return `${selectedDatabase} · 对象`;
+      }
+      return '对象';
+    }
+    if (selectedTable && selectedDatabase) {
+      return `${selectedTable}@${selectedDatabase}`;
+    }
+    if (selectedDatabase) {
+      return `${selectedDatabase}`;
+    }
+    if (activeProfile) {
+      return `${activeProfile.name}`;
+    }
+    return '请选择数据库';
+  }, [activeTab, selectedTable, selectedDatabase, activeProfile]);
+
+  const workspaceSubtitle = useMemo(() => {
+    if (activeTab === 'objects') {
+      if (isConnecting) {
+        return '正在连接并获取表信息...';
+      }
+      if (selectedDatabase) {
+        return `当前库：${selectedDatabase} · 双击表可打开数据视图`;
+      }
+      return '请选择数据库以查看对象列表';
+    }
+    if (isConnecting) {
+      return '正在连接到服务器...';
+    }
+    if (activeProfile) {
+      return `${activeProfile.host}:${activeProfile.port} · ${activeProfile.username}`;
+    }
+    return '未建立连接';
+  }, [activeTab, selectedDatabase, activeProfile, isConnecting]);
+
   return (
-    <Box sx={{ 
-      height: '100vh', 
-      display: 'flex',
-      bgcolor: '#2E2E2E',
-      overflow: 'hidden'
-    }}>
-      {/* 左侧导航面板 */}
-      <Box sx={{ 
-        width: 280, 
+    <Box
+      sx={{
+        width: '100%',
         height: '100%',
-        bgcolor: '#2B3A4A',
-        borderRight: '1px solid #555555',
+        minHeight: 0,
         display: 'flex',
-        flexDirection: 'column'
-      }}>
+        borderRadius: theme.shape.borderRadius,
+        border: `1px solid ${borderColor}`,
+        backgroundColor: alpha(theme.palette.background.paper, theme.palette.mode === 'dark' ? 0.92 : 1)
+      }}
+    >
+      <Box
+        sx={{
+          width: { xs: 260, md: 300 },
+          flexShrink: 0,
+          borderRight: `1px solid ${borderColor}`,
+          backgroundImage: infoSurface,
+          display: 'flex',
+          flexDirection: 'column'
+        }}
+      >
         <SimpleNavigator
+          savedProfiles={savedProfiles}
+          activeProfile={activeProfile}
+          connected={connected}
+          isConnecting={isConnecting}
           selectedDatabase={selectedDatabase}
           selectedTable={selectedTable}
           onDatabaseSelect={handleDatabaseSelect}
           onTableSelect={handleTableSelect}
+          onProfileSelect={onSelectProfile}
+          onNewConnection={onNewConnection}
+          onToggleFavorite={onToggleFavorite}
+          onDeleteProfile={onDeleteProfile}
           onRefresh={handleRefresh}
+          onDisconnect={onDisconnect}
           databases={databases}
           key={refreshKey}
         />
       </Box>
 
-      {/* 右侧内容区域 */}
-      <Box sx={{ 
-        flex: 1, 
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        bgcolor: '#2E2E2E'
-      }}>
-        {/* 标签栏 */}
-        <Box sx={{
-          borderBottom: '1px solid #555555',
-          bgcolor: '#2E2E2E',
-          minHeight: 36
-        }}>
+      <Box
+        sx={{
+          flex: 1,
+          minWidth: 0,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundImage: 'linear-gradient(180deg, rgba(18,24,35,0.92) 0%, rgba(11,16,26,0.96) 100%)'
+        }}
+      >
+        <Box
+          sx={{
+            borderBottom: `1px solid ${borderColor}`,
+            backgroundColor: headerBg,
+            px: 3,
+            py: 2
+          }}
+        >
+          <Stack
+            direction={{ xs: 'column', lg: 'row' }}
+            spacing={2}
+            alignItems={{ xs: 'flex-start', lg: 'center' }}
+            justifyContent="space-between"
+          >
+            <Stack spacing={1}>
+              <Typography variant="h6" fontWeight={700} color="text.primary" sx={{ letterSpacing: -0.2 }}>
+                {workspaceTitle}
+              </Typography>
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                <Typography variant="caption" color="text.secondary">
+                  {workspaceSubtitle}
+                </Typography>
+                {selectedDatabase && (
+                  <Chip
+                    size="small"
+                    label={`库：${selectedDatabase}`}
+                    sx={{
+                      backgroundColor: alpha(theme.palette.primary.main, 0.16),
+                      color: alpha(theme.palette.common.white, 0.85)
+                    }}
+                  />
+                )}
+                {selectedTable && (
+                  <Chip
+                    size="small"
+                    label={`表：${selectedTable}`}
+                    sx={{
+                      backgroundColor: alpha(theme.palette.secondary.main, 0.16),
+                      color: alpha(theme.palette.common.white, 0.85)
+                    }}
+                  />
+                )}
+              </Stack>
+            </Stack>
+
+            <Stack direction="row" spacing={1} alignItems="center">
+              {workspaceActions.map((action) => (
+                <Tooltip title={action.label} key={action.key}>
+                  <IconButton
+                    size="small"
+                    onClick={action.onClick}
+                    sx={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 1.5,
+                      bgcolor: alpha(action.color, 0.22),
+                      color: '#ffffff',
+                      border: `1px solid ${alpha(action.color, 0.45)}`,
+                      boxShadow: `0 10px 20px ${alpha(action.color, 0.3)}`,
+                      '&:hover': {
+                        bgcolor: alpha(action.color, 0.32)
+                      }
+                    }}
+                  >
+                    {action.icon}
+                  </IconButton>
+                </Tooltip>
+              ))}
+            </Stack>
+          </Stack>
+        </Box>
+
+        <Box
+          sx={{
+            borderBottom: `1px solid ${borderColor}`,
+            backgroundColor: toolbarBg,
+            minHeight: 48,
+            display: 'flex',
+            alignItems: 'center',
+            px: 2
+          }}
+        >
           <Tabs
             value={activeTab}
             onChange={handleTabChange}
             variant="scrollable"
             scrollButtons="auto"
             sx={{
-              minHeight: 36,
+              minHeight: 44,
               '& .MuiTabs-flexContainer': {
-                height: 36
-              },
-              '& .MuiTab-root': {
-                minHeight: 36,
-                height: 36,
-                color: '#CCCCCC',
-                fontSize: '0.8rem',
-                textTransform: 'none',
-                minWidth: 120,
-                maxWidth: 200,
-                px: 1,
-                '&.Mui-selected': {
-                  color: '#ffffff',
-                  bgcolor: '#3E3E3E'
-                },
-                '&:hover': {
-                  bgcolor: '#3A3A3A'
-                }
+                height: 44,
+                gap: 6
               },
               '& .MuiTabs-indicator': {
-                backgroundColor: '#4A90E2',
-                height: 2
+                backgroundColor: theme.palette.primary.main,
+                height: 2,
+                borderRadius: 999
               }
             }}
           >
@@ -177,17 +386,19 @@ const ExactMainView: React.FC<ExactMainViewProps> = ({
                 key={tab.id}
                 value={tab.id}
                 label={
-                  <Box sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'space-between',
-                    width: '100%',
-                    minWidth: 0
-                  }}>
-                    <Typography 
-                      variant="inherit" 
-                      sx={{ 
-                        flex: 1, 
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      width: '100%',
+                      minWidth: 0
+                    }}
+                  >
+                    <Typography
+                      variant="inherit"
+                      sx={{
+                        flex: 1,
                         textAlign: 'left',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
@@ -205,53 +416,71 @@ const ExactMainView: React.FC<ExactMainViewProps> = ({
                         }}
                         sx={{
                           ml: 0.5,
-                          color: 'inherit',
+                          color: alpha(theme.palette.text.secondary, 0.8),
                           '&:hover': {
-                            bgcolor: 'rgba(255, 255, 255, 0.1)'
+                            bgcolor: alpha(theme.palette.primary.main, 0.14),
+                            color: theme.palette.primary.light
                           }
                         }}
                       >
-                        <CloseIcon sx={{ fontSize: 14 }} />
+                        <CloseIcon sx={{ fontSize: 16 }} />
                       </IconButton>
                     )}
                   </Box>
                 }
+                sx={{
+                  minHeight: 44,
+                  height: 44,
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  color: tab.id === activeTab ? theme.palette.primary.light : alpha(theme.palette.text.secondary, 0.78),
+                  borderRadius: 1.5,
+                  px: 1.5,
+                  minWidth: 140,
+                  bgcolor: tab.id === activeTab
+                    ? alpha(theme.palette.primary.main, 0.24)
+                    : alpha(theme.palette.common.white, 0.04),
+                  '&:hover': {
+                    bgcolor: alpha(theme.palette.primary.main, 0.18)
+                  }
+                }}
               />
             ))}
           </Tabs>
         </Box>
 
-        {/* 标签页内容 */}
-        <Box sx={{ flex: 1, overflow: 'hidden' }}>
-          {tabs.map((tab) => (
-            <Box
-              key={tab.id}
-              hidden={activeTab !== tab.id}
-              sx={{ height: '100%', overflow: 'hidden' }}
-            >
-              {tab.id === 'welcome' ? (
-                <Box sx={{
+        <Box sx={{ flex: 1, minHeight: 0, backgroundColor: alpha(theme.palette.background.paper, theme.palette.mode === 'dark' ? 0.75 : 0.94) }}>
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <Box
+                key={tab.id}
+                role="tabpanel"
+                hidden={!isActive}
+                sx={{
                   height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  bgcolor: '#2E2E2E'
-                }}>
-                  <Typography variant="h6" sx={{ color: '#CCCCCC' }}>
-                    选择一个表开始查看数据
-                  </Typography>
-                </Box>
-              ) : (
-                tab.database && tab.table && (
-                  <ExactDataTable
-                    database={tab.database}
-                    table={tab.table}
-                    key={`${tab.database}-${tab.table}`}
+                  display: isActive ? 'flex' : 'none',
+                  flexDirection: 'column',
+                  minHeight: 0
+                }}
+              >
+                {tab.id === 'objects' ? (
+                  <DatabaseObjectsView
+                    key={`objects-${selectedDatabase ?? 'none'}`}
+                    database={selectedDatabase}
+                    onOpenTable={handleOpenTableFromObjects}
+                    onAction={handleObjectsAction}
                   />
-                )
-              )}
-            </Box>
-          ))}
+                ) : (
+                  tab.database && tab.table && (
+                    <Box sx={{ flex: 1, minHeight: 0, display: 'flex' }}>
+                      <ExactDataTable database={tab.database} table={tab.table} key={`${tab.database}-${tab.table}`} />
+                    </Box>
+                  )
+                )}
+              </Box>
+            );
+          })}
         </Box>
       </Box>
     </Box>

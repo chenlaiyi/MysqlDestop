@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Table,
@@ -7,7 +7,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TablePagination,
   Checkbox,
   TableSortLabel,
   Typography,
@@ -24,6 +23,8 @@ import {
   ListItemText,
   Divider
 } from '@mui/material';
+import type { TextFieldProps } from '@mui/material/TextField';
+import { alpha, useTheme } from '@mui/material/styles';
 import {
   Search as SearchIcon,
   Refresh as RefreshIcon,
@@ -32,7 +33,11 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Remove as RemoveIcon,
-  ViewColumn as ViewColumnIcon
+  ViewColumn as ViewColumnIcon,
+  FirstPage as FirstPageIcon,
+  LastPage as LastPageIcon,
+  KeyboardArrowLeft as PrevPageIcon,
+  KeyboardArrowRight as NextPageIcon
 } from '@mui/icons-material';
 
 interface ExactDataTableProps {
@@ -42,7 +47,11 @@ interface ExactDataTableProps {
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const highlightMatches = (text: string, keyword: string): React.ReactNode => {
+const highlightMatches = (
+  text: string,
+  keyword: string,
+  highlightSx: Record<string, unknown>
+): React.ReactNode => {
   if (!keyword) {
     return text;
   }
@@ -62,10 +71,9 @@ const highlightMatches = (text: string, keyword: string): React.ReactNode => {
           component="span"
           key={`match-${idx}`}
           sx={{
-            bgcolor: 'rgba(74, 144, 226, 0.3)',
-            color: '#ffffff',
             borderRadius: 0.5,
-            px: 0.3
+            px: 0.3,
+            ...highlightSx
           }}
         >
           {segment}
@@ -82,8 +90,36 @@ const highlightMatches = (text: string, keyword: string): React.ReactNode => {
 
 const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
   const ROWS_PER_PAGE_MIN = 10;
-  const ROWS_PER_PAGE_MAX = 500;
+  const ROWS_PER_PAGE_MAX = 1000;
   const ROWS_PER_PAGE_STEP = 10;
+
+  const theme = useTheme();
+  const borderColor = alpha(theme.palette.common.white, theme.palette.mode === 'dark' ? 0.12 : 0.14);
+  const toolbarBg = alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.42 : 0.08);
+  const tableBg = theme.palette.mode === 'dark' ? 'rgba(13, 18, 28, 0.98)' : alpha(theme.palette.background.paper, 0.96);
+  const footerBg = alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.38 : 0.06);
+  const surfaceBg = alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.32 : 0.05);
+  const mutedText = alpha(theme.palette.text.secondary, 0.86);
+  const iconColor = alpha(theme.palette.text.secondary, 0.78);
+  const iconDisabled = alpha(theme.palette.text.secondary, 0.38);
+  const hoverAccent = alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.14 : 0.08);
+  const selectedRowBg = alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.22 : 0.16);
+  const headerCellBg = theme.palette.mode === 'dark'
+    ? 'rgba(32, 39, 52, 0.96)'
+    : alpha(theme.palette.background.paper, 0.96);
+  const headerTextColor = theme.palette.mode === 'dark'
+    ? alpha('#f3f6ff', 0.82)
+    : theme.palette.text.secondary;
+  const bodyTextColor = theme.palette.mode === 'dark'
+    ? alpha('#f7f9ff', 0.9)
+    : theme.palette.text.primary;
+  const highlightSx = useMemo(
+    () => ({
+      backgroundColor: alpha(theme.palette.primary.main, 0.24),
+      color: theme.palette.primary.contrastText
+    }),
+    [theme]
+  );
 
   const [data, setData] = useState<any[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
@@ -100,6 +136,14 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
   const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
   const [columnMenuAnchorEl, setColumnMenuAnchorEl] = useState<null | HTMLElement>(null);
   const isColumnMenuOpen = Boolean(columnMenuAnchorEl);
+  const [pageInput, setPageInput] = useState('1');
+  const [editingCell, setEditingCell] = useState<{
+    rowIndex: number;
+    column: string;
+    value: string;
+    original: any;
+  } | null>(null);
+  const [isSavingCell, setIsSavingCell] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -139,9 +183,7 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
 
           const prevSet = new Set(prev);
           const filteredPrev = prev.filter((col) => resolvedColumns.includes(col));
-          const newlyDiscovered = resolvedColumns.filter(
-            (col) => !prevSet.has(col) && !columns.includes(col)
-          );
+          const newlyDiscovered = resolvedColumns.filter((col) => !prevSet.has(col));
 
           if (filteredPrev.length === 0) {
             return resolvedColumns;
@@ -174,6 +216,7 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
     setDebouncedSearchTerm('');
     setVisibleColumns([]);
     setColumnMenuAnchorEl(null);
+    setPageInput('1');
   }, [database, table]);
 
   useEffect(() => {
@@ -191,14 +234,10 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
     loadData();
   }, [loadData]);
 
-  const handleChangePage = (event: unknown, newPage: number) => {
-    setPage(newPage);
-  };
-
-  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
-  };
+  useEffect(() => {
+    const nextPageInput = totalCount === 0 ? '1' : String(page + 1);
+    setPageInput(nextPageInput);
+  }, [page, totalCount]);
 
   const handleSelectAllClick = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
@@ -283,6 +322,78 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
     });
   };
 
+  const startEditingCell = (rowIndex: number, column: string) => {
+    const row = data[rowIndex];
+    if (!row) return;
+    const currentValue = row[column];
+    setEditingCell({
+      rowIndex,
+      column,
+      value: currentValue == null ? '' : String(currentValue),
+      original: currentValue
+    });
+  };
+
+  const handleEditChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (!editingCell) return;
+    setEditingCell({ ...editingCell, value: event.target.value });
+  };
+
+  const cancelEditingCell = () => {
+    setEditingCell(null);
+  };
+
+  const commitEditingCell = async () => {
+    if (!editingCell) return;
+    const { rowIndex, column, value, original } = editingCell;
+    const row = data[rowIndex];
+    if (!row) {
+      setEditingCell(null);
+      return;
+    }
+
+    if (value === original || columns.length === 0) {
+      setEditingCell(null);
+      return;
+    }
+
+    const primaryKey = columns[0];
+    const primaryKeyValue = row[primaryKey];
+
+    if (primaryKeyValue === undefined) {
+      alert('无法确定主键，无法保存。');
+      setEditingCell(null);
+      return;
+    }
+
+    try {
+      setIsSavingCell(true);
+      const result = await window.mysqlApi.updateRow(
+        database,
+        table,
+        primaryKey,
+        primaryKeyValue,
+        { [column]: value }
+      );
+
+      if (!result.success) {
+        throw new Error(result.error || '更新失败');
+      }
+
+      setData((prev) => {
+        const next = [...prev];
+        next[rowIndex] = { ...next[rowIndex], [column]: value };
+        return next;
+      });
+      setEditingCell(null);
+    } catch (error: any) {
+      alert(error?.message || '更新失败');
+      setEditingCell(null);
+    } finally {
+      setIsSavingCell(false);
+    }
+  };
+
   const handleColumnMenuToggle = (event: React.MouseEvent, column: string) => {
     event.preventDefault();
     event.stopPropagation();
@@ -301,6 +412,60 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
 
   const totalPages = rowsPerPage > 0 ? Math.ceil(totalCount / rowsPerPage) : 0;
   const effectiveTotalPages = totalPages > 0 ? totalPages : 1;
+
+  const handleFirstPage = () => {
+    if (page > 0) {
+      setPage(0);
+    }
+  };
+
+  const handleLastPage = () => {
+    if (totalPages > 0 && page < totalPages - 1) {
+      setPage(totalPages - 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (page > 0) {
+      setPage(page - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (totalPages === 0) {
+      return;
+    }
+    if (page < totalPages - 1) {
+      setPage(page + 1);
+    }
+  };
+
+  const commitPageInput = (value: string) => {
+    const numeric = parseInt(value, 10);
+    if (Number.isNaN(numeric)) {
+      setPageInput(String(page + 1));
+      return;
+    }
+    const safeTotal = totalPages > 0 ? totalPages : 1;
+    const clamped = Math.min(Math.max(numeric, 1), safeTotal);
+    setPage(clamped - 1);
+    setPageInput(String(clamped));
+  };
+
+  const handlePageInputChange: TextFieldProps['onChange'] = (event) => {
+    setPageInput(event.target.value.replace(/[^0-9]/g, ''));
+  };
+
+  const handlePageInputBlur: TextFieldProps['onBlur'] = (event) => {
+    commitPageInput(event.target.value);
+  };
+
+  const handlePageInputKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commitPageInput(pageInput);
+    }
+  };
   const fromRow = totalCount === 0 ? 0 : page * rowsPerPage + 1;
   const toRow = totalCount === 0 ? 0 : Math.min(totalCount, (page + 1) * rowsPerPage);
   const emptyColSpan = Math.max(visibleColumns.length + 2, 1);
@@ -312,29 +477,40 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
         justifyContent: 'center',
         alignItems: 'center',
         height: '100%',
-        bgcolor: '#2E2E2E'
+        bgcolor: surfaceBg
       }}>
-        <CircularProgress sx={{ color: '#4A90E2' }} />
+        <CircularProgress sx={{ color: theme.palette.primary.light }} />
       </Box>
     );
   }
 
   return (
-    <Box sx={{ 
-      height: '100%',
-      display: 'flex',
-      flexDirection: 'column',
-      bgcolor: '#2E2E2E'
-    }}>
-      {/* 工具栏 */}
-      <Box sx={{
-        p: 1.5,
-        borderBottom: '1px solid #555555',
-        bgcolor: '#353535',
+    <Box
+      sx={{
+        height: '100%',
+        flex: 1,
         display: 'flex',
-        alignItems: 'center',
-        gap: 1
-      }}>
+        flexDirection: 'column',
+        bgcolor: surfaceBg,
+        borderRadius: theme.shape.borderRadius,
+        border: `1px solid ${borderColor}`,
+        overflow: 'hidden'
+      }}
+    >
+      {/* 工具栏 */}
+      <Box
+        sx={{
+          p: 1.5,
+          borderBottom: `1px solid ${borderColor}`,
+          bgcolor: toolbarBg,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+          position: 'sticky',
+          top: 0,
+          zIndex: 6
+        }}
+      >
         <TextField
           size="small"
           placeholder="搜索..."
@@ -343,28 +519,28 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <SearchIcon fontSize="small" sx={{ color: '#CCCCCC' }} />
+                <SearchIcon fontSize="small" sx={{ color: iconColor }} />
               </InputAdornment>
             ),
           }}
           sx={{
             width: 200,
             '& .MuiOutlinedInput-root': {
-              backgroundColor: '#2E2E2E',
+              backgroundColor: alpha(theme.palette.common.white, theme.palette.mode === 'dark' ? 0.04 : 0.12),
               height: 32,
               '& fieldset': {
-                borderColor: '#555555',
+                borderColor: borderColor,
               },
               '&:hover fieldset': {
-                borderColor: '#4A90E2',
+                borderColor: theme.palette.primary.main,
               },
               '&.Mui-focused fieldset': {
-                borderColor: '#4A90E2',
+                borderColor: theme.palette.primary.main,
                 borderWidth: 1
               },
             },
             '& .MuiInputBase-input': {
-              color: '#ffffff',
+              color: theme.palette.text.primary,
               fontSize: '0.8rem',
               padding: '6px 8px'
             }
@@ -372,12 +548,115 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
         />
 
         <Box sx={{ ml: 2 }}>
-          <Typography variant="caption" sx={{ color: '#CCCCCC', display: 'block' }}>
+          <Typography variant="caption" sx={{ color: theme.palette.text.secondary, display: 'block' }}>
             {`总行数: ${totalCount.toLocaleString()} | 当前: ${fromRow === 0 ? 0 : `${fromRow}-${toRow}`}`}
           </Typography>
-          <Typography variant="caption" sx={{ color: '#888888', display: 'block' }}>
+          <Typography variant="caption" sx={{ color: mutedText, display: 'block' }}>
             {`第 ${totalCount === 0 ? 0 : page + 1}/${effectiveTotalPages} 页 | 已选 ${selected.length} 行`}
           </Typography>
+        </Box>
+
+        <Divider orientation="vertical" flexItem sx={{ borderColor }} />
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Tooltip title="跳到首页">
+            <span>
+              <IconButton
+                size="small"
+                onClick={handleFirstPage}
+                disabled={page === 0}
+                sx={{
+                  color: iconColor,
+                  '&:hover': { color: theme.palette.primary.main },
+                  '&.Mui-disabled': { color: iconDisabled }
+                }}
+              >
+                <FirstPageIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="上一页">
+            <span>
+              <IconButton
+                size="small"
+                onClick={handlePrevPage}
+                disabled={page === 0}
+                sx={{
+                  color: iconColor,
+                  '&:hover': { color: theme.palette.primary.main },
+                  '&.Mui-disabled': { color: iconDisabled }
+                }}
+              >
+                <PrevPageIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <TextField
+            size="small"
+            value={pageInput}
+            onChange={handlePageInputChange}
+            onBlur={handlePageInputBlur}
+            onKeyDown={handlePageInputKeyDown}
+            sx={{
+              width: 70,
+              '& .MuiOutlinedInput-root': {
+                backgroundColor: alpha(theme.palette.common.white, theme.palette.mode === 'dark' ? 0.04 : 0.08),
+                height: 32,
+                '& fieldset': {
+                  borderColor: borderColor
+                },
+                '&:hover fieldset': {
+                  borderColor: theme.palette.primary.main
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: theme.palette.primary.main,
+                  borderWidth: 1
+                }
+              },
+              '& .MuiInputBase-input': {
+                color: theme.palette.text.primary,
+                fontSize: '0.8rem',
+                padding: '6px 8px',
+                textAlign: 'center'
+              }
+            }}
+            inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', min: 1 }}
+          />
+            <Typography variant="caption" sx={{ color: mutedText, minWidth: 60 }}>
+            {`/ ${effectiveTotalPages}`}
+          </Typography>
+          <Tooltip title="下一页">
+            <span>
+              <IconButton
+                size="small"
+                onClick={handleNextPage}
+                disabled={totalPages === 0 || page >= totalPages - 1}
+                sx={{
+                    color: iconColor,
+                    '&:hover': { color: theme.palette.primary.main },
+                    '&.Mui-disabled': { color: iconDisabled }
+                }}
+              >
+                <NextPageIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="跳到末页">
+            <span>
+              <IconButton
+                size="small"
+                onClick={handleLastPage}
+                disabled={totalPages === 0 || page >= totalPages - 1}
+                sx={{
+                    color: iconColor,
+                    '&:hover': { color: theme.palette.primary.main },
+                    '&.Mui-disabled': { color: iconDisabled }
+                }}
+              >
+                <LastPageIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
         </Box>
         
         <Tooltip title="列显示">
@@ -387,10 +666,10 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
               onClick={handleOpenColumnMenu}
               disabled={columns.length === 0}
               sx={{
-                color: '#CCCCCC',
-                '&:hover': { color: '#4A90E2' },
+                  color: iconColor,
+                  '&:hover': { color: theme.palette.primary.main },
                 '&.Mui-disabled': {
-                  color: '#555555'
+                    color: iconDisabled
                 }
               }}
             >
@@ -407,10 +686,10 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
             onClick={handleRefresh}
             disabled={loading}
             sx={{
-              color: '#CCCCCC',
-              '&:hover': { color: '#4A90E2' },
+                color: iconColor,
+                '&:hover': { color: theme.palette.primary.main },
               '&.Mui-disabled': {
-                color: '#555555'
+                  color: iconDisabled
               }
             }}
           >
@@ -421,7 +700,7 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
         <Tooltip title="导出">
           <IconButton
             size="small"
-            sx={{ color: '#CCCCCC', '&:hover': { color: '#4A90E2' } }}
+              sx={{ color: iconColor, '&:hover': { color: theme.palette.primary.main } }}
           >
             <ExportIcon fontSize="small" />
           </IconButton>
@@ -430,7 +709,7 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
         <Tooltip title="添加">
           <IconButton
             size="small"
-            sx={{ color: '#CCCCCC', '&:hover': { color: '#4A90E2' } }}
+              sx={{ color: iconColor, '&:hover': { color: theme.palette.primary.main } }}
           >
             <AddIcon fontSize="small" />
           </IconButton>
@@ -444,11 +723,17 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
         keepMounted
+        PaperProps={{
+          sx: {
+            backgroundColor: toolbarBg,
+            border: `1px solid ${borderColor}`
+          }
+        }}
       >
         <MenuItem disabled dense>
           <ListItemText
             primary="可显示列"
-            primaryTypographyProps={{ fontSize: '0.78rem', color: '#888888' }}
+            primaryTypographyProps={{ fontSize: '0.78rem', color: mutedText }}
           />
         </MenuItem>
         <Divider sx={{ my: 0.5 }} />
@@ -477,7 +762,7 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
                 primary={column}
                 primaryTypographyProps={{
                   fontSize: '0.85rem',
-                  color: disableHide ? '#777777' : '#ffffff'
+                  color: disableHide ? iconDisabled : theme.palette.text.primary
                 }}
               />
             </MenuItem>
@@ -492,7 +777,7 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
               </ListItemIcon>
               <ListItemText
                 primary="显示全部列"
-                primaryTypographyProps={{ fontSize: '0.85rem' }}
+                primaryTypographyProps={{ fontSize: '0.85rem', color: theme.palette.text.primary }}
               />
             </MenuItem>
           </>
@@ -504,14 +789,22 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
         <Alert
           severity="error"
           onClose={() => setError(null)}
-          sx={{ m: 1, '& .MuiAlert-message': { color: '#ffffff' } }}
+          sx={{
+            m: 1,
+            backgroundColor: alpha(theme.palette.error.main, 0.12),
+            color: theme.palette.error.light,
+            border: `1px solid ${alpha(theme.palette.error.main, 0.4)}`,
+            '& .MuiAlert-icon': {
+              color: theme.palette.error.light
+            }
+          }}
         >
           {error}
         </Alert>
       )}
 
       {/* 数据表格 */}
-      <Box sx={{ position: 'relative', flex: 1 }}>
+      <Box sx={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {loading && (
           <LinearProgress
             sx={{
@@ -521,40 +814,43 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
               width: '100%',
               zIndex: 2,
               '& .MuiLinearProgress-bar': {
-                backgroundColor: '#4A90E2'
+                backgroundColor: theme.palette.primary.main
               }
             }}
           />
         )}
-        <TableContainer sx={{ 
-          height: '100%',
-          bgcolor: '#2E2E2E',
-          overflowX: 'auto',
-          overflowY: 'auto',
-          '&::-webkit-scrollbar': {
-            width: 8,
-            height: 8
-          },
-          '&::-webkit-scrollbar-track': {
-            bgcolor: '#2E2E2E'
-          },
-          '&::-webkit-scrollbar-thumb': {
-            bgcolor: '#555555',
-            borderRadius: 4,
-            '&:hover': {
-              bgcolor: '#666666'
+        <TableContainer
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            bgcolor: tableBg,
+            overflowX: 'auto',
+            overflowY: 'auto',
+            '&::-webkit-scrollbar': {
+              width: 8,
+              height: 8
+            },
+            '&::-webkit-scrollbar-track': {
+              bgcolor: alpha(theme.palette.common.white, theme.palette.mode === 'dark' ? 0.02 : 0.08)
+            },
+            '&::-webkit-scrollbar-thumb': {
+              bgcolor: alpha(theme.palette.common.white, theme.palette.mode === 'dark' ? 0.12 : 0.24),
+              borderRadius: 4,
+              '&:hover': {
+                bgcolor: alpha(theme.palette.common.white, theme.palette.mode === 'dark' ? 0.18 : 0.32)
+              }
             }
-          }
-        }}>
+          }}
+        >
           <Table stickyHeader size="small">
           <TableHead>
             <TableRow>
               <TableCell
                 padding="checkbox"
                 sx={{
-                  bgcolor: '#3E3E3E',
-                  borderBottom: '1px solid #555555',
-                  color: '#ffffff',
+                  bgcolor: headerCellBg,
+                  borderBottom: `1px solid ${borderColor}`,
+                  color: headerTextColor,
                   position: 'sticky',
                   left: 0,
                   zIndex: 3,
@@ -568,14 +864,14 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
                   indeterminate={selected.length > 0 && selected.length < data.length}
                   checked={data.length > 0 && selected.length === data.length}
                   onChange={handleSelectAllClick}
-                  sx={{ color: '#CCCCCC' }}
+                  sx={{ color: iconColor }}
                 />
               </TableCell>
               <TableCell
                 sx={{
-                  bgcolor: '#3E3E3E',
-                  borderBottom: '1px solid #555555',
-                  color: '#ffffff',
+                  bgcolor: headerCellBg,
+                  borderBottom: `1px solid ${borderColor}`,
+                  color: headerTextColor,
                   fontWeight: 600,
                   fontSize: '0.8rem',
                   whiteSpace: 'nowrap',
@@ -595,9 +891,9 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
                         key={column}
                         sortDirection={isSorted ? sortDirection : false}
                         sx={{
-                          bgcolor: '#3E3E3E',
-                          borderBottom: '1px solid #555555',
-                          color: '#ffffff',
+                          bgcolor: headerCellBg,
+                          borderBottom: `1px solid ${borderColor}`,
+                          color: headerTextColor,
                           fontWeight: 600,
                           fontSize: '0.8rem',
                           whiteSpace: 'nowrap'
@@ -609,12 +905,12 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
                           onClick={() => handleSort(column)}
                           hideSortIcon={!isSorted}
                           sx={{
-                            color: '#ffffff',
+                            color: headerTextColor,
                             '&.Mui-active': {
-                              color: '#4A90E2'
+                              color: theme.palette.primary.main
                             },
                             '& .MuiTableSortLabel-icon': {
-                              color: '#4A90E2'
+                              color: theme.palette.primary.main
                             }
                           }}
                         >
@@ -637,24 +933,25 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
                   onClick={(event) => handleRowClick(event, index)}
                   sx={{
                     cursor: 'pointer',
+                    height: 36,
                     '&:hover': {
-                      bgcolor: '#3A3A3A !important'
+                      bgcolor: hoverAccent
                     },
                     '&.Mui-selected': {
-                      bgcolor: '#2E4A6B !important'
+                      bgcolor: selectedRowBg
                     },
                     '&:hover td': {
-                      bgcolor: '#3A3A3A !important'
+                      bgcolor: hoverAccent
                     },
                     '&.Mui-selected td': {
-                      bgcolor: '#2E4A6B !important'
+                      bgcolor: selectedRowBg
                     }
                   }}
                 >
                   <TableCell
                     padding="checkbox"
                     sx={{
-                      borderBottom: '1px solid #555555',
+                      borderBottom: `1px solid ${borderColor}`,
                       bgcolor: 'inherit',
                       position: 'sticky',
                       left: 0,
@@ -667,13 +964,13 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
                     <Checkbox
                       color="primary"
                       checked={isItemSelected}
-                      sx={{ color: '#CCCCCC' }}
+                      sx={{ color: iconColor }}
                     />
                   </TableCell>
                   <TableCell
                     sx={{
-                      borderBottom: '1px solid #555555',
-                      color: '#888888',
+                      borderBottom: `1px solid ${borderColor}`,
+                      color: mutedText,
                       fontSize: '0.75rem',
                       width: 72,
                       minWidth: 72,
@@ -685,32 +982,71 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
                   >
                     {globalIndex}
                   </TableCell>
-                  {visibleColumns.map((column) => (
-                    <TableCell
-                      key={column}
-                      sx={{
-                        borderBottom: '1px solid #555555',
-                        color: '#ffffff',
-                        fontSize: '0.8rem',
-                        whiteSpace: 'nowrap',
-                        bgcolor: 'inherit'
-                      }}
-                    >
-                      <Tooltip
-                        title={row[column] !== null && row[column] !== undefined ? String(row[column]) : ''}
-                        disableHoverListener={row[column] === null || row[column] === undefined || String(row[column]) === ''}
-                        arrow
-                        placement="top-start"
-                        enterDelay={600}
+                  {visibleColumns.map((column) => {
+                    const isEditing = editingCell && editingCell.rowIndex === index && editingCell.column === column;
+                    const cellValue = row[column];
+                    return (
+                      <TableCell
+                        key={column}
+                        sx={{
+                          borderBottom: `1px solid ${borderColor}`,
+                          color: bodyTextColor,
+                          fontSize: '0.8rem',
+                          whiteSpace: 'nowrap',
+                          bgcolor: 'inherit',
+                          position: 'relative'
+                        }}
+                        onDoubleClick={(event) => {
+                          event.stopPropagation();
+                          if (!isSavingCell) {
+                            startEditingCell(index, column);
+                          }
+                        }}
                       >
-                        <Box component="span">
-                          {row[column] !== null && row[column] !== undefined
-                            ? highlightMatches(String(row[column]), debouncedSearchTerm)
-                            : ''}
-                        </Box>
-                      </Tooltip>
-                    </TableCell>
-                  ))}
+                        {isEditing ? (
+                          <TextField
+                            size="small"
+                            fullWidth
+                            autoFocus
+                            value={editingCell.value}
+                            onChange={handleEditChange}
+                            onBlur={() => void commitEditingCell()}
+                            onClick={(event) => event.stopPropagation()}
+                            disabled={isSavingCell}
+                            InputProps={{
+                              sx: {
+                                fontSize: '0.8rem',
+                                py: 0.25
+                              }
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                void commitEditingCell();
+                              } else if (event.key === 'Escape') {
+                                event.preventDefault();
+                                cancelEditingCell();
+                              }
+                            }}
+                          />
+                        ) : (
+                          <Tooltip
+                            title={cellValue !== null && cellValue !== undefined ? String(cellValue) : ''}
+                            disableHoverListener={cellValue === null || cellValue === undefined || String(cellValue) === ''}
+                            arrow
+                            placement="top-start"
+                            enterDelay={600}
+                          >
+                            <Box component="span">
+                              {cellValue !== null && cellValue !== undefined
+                                ? highlightMatches(String(cellValue), debouncedSearchTerm, highlightSx)
+                                : ''}
+                            </Box>
+                          </Tooltip>
+                        )}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
               );
             })}
@@ -719,11 +1055,11 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
                 <TableCell
                   colSpan={emptyColSpan}
                   sx={{
-                    borderBottom: '1px solid #555555',
-                    color: '#CCCCCC',
+                    borderBottom: `1px solid ${borderColor}`,
+                    color: mutedText,
                     textAlign: 'center',
                     fontStyle: 'italic',
-                    bgcolor: '#2E2E2E'
+                    bgcolor: tableBg
                   }}
                 >
                   暂无数据
@@ -738,87 +1074,64 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
       {/* 分页器 */}
       <Box
         sx={{
-          borderTop: '1px solid #555555',
-          bgcolor: '#353535',
+          borderTop: `1px solid ${borderColor}`,
+          bgcolor: footerBg,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           px: 2,
-          py: 0.5,
-          gap: 2
+          py: 0.75,
+          gap: 2,
+          position: 'sticky',
+          bottom: 0,
+          zIndex: 5
         }}
       >
+        <Typography variant="caption" sx={{ color: mutedText }}>
+          {totalCount === 0
+            ? '暂无记录'
+            : `记录 ${fromRow.toLocaleString()}-${toRow.toLocaleString()} / ${totalCount.toLocaleString()}`}
+        </Typography>
+
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Typography variant="caption" sx={{ color: '#CCCCCC' }}>
-              每页行数
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <Tooltip title="减少每页行数">
-                <span>
-                  <IconButton
-                    size="small"
-                    onClick={handleDecreaseRowsPerPage}
-                    disabled={rowsPerPage <= ROWS_PER_PAGE_MIN}
-                    sx={{
-                      color: '#CCCCCC',
-                      '&:hover': { color: '#4A90E2' },
-                      '&.Mui-disabled': { color: '#555555' }
-                    }}
-                  >
-                    <RemoveIcon fontSize="small" />
-                  </IconButton>
-                </span>
-              </Tooltip>
-              <Typography variant="body2" sx={{ color: '#ffffff', minWidth: 32, textAlign: 'center' }}>
-                {rowsPerPage}
-              </Typography>
-              <Tooltip title="增加每页行数">
-                <span>
-                  <IconButton
-                    size="small"
-                    onClick={handleIncreaseRowsPerPage}
-                    disabled={rowsPerPage >= ROWS_PER_PAGE_MAX}
-                    sx={{
-                      color: '#CCCCCC',
-                      '&:hover': { color: '#4A90E2' },
-                      '&.Mui-disabled': { color: '#555555' }
-                    }}
-                  >
-                    <AddIcon fontSize="small" />
-                  </IconButton>
-                </span>
-              </Tooltip>
-            </Box>
+          <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
+            每页 {rowsPerPage} 行
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Tooltip title="减少每页行数">
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={handleDecreaseRowsPerPage}
+                  disabled={rowsPerPage <= ROWS_PER_PAGE_MIN}
+                  sx={{
+                    color: iconColor,
+                    '&:hover': { color: theme.palette.primary.main },
+                    '&.Mui-disabled': { color: iconDisabled }
+                  }}
+                >
+                  <RemoveIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="增加每页行数">
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={handleIncreaseRowsPerPage}
+                  disabled={rowsPerPage >= ROWS_PER_PAGE_MAX}
+                  sx={{
+                    color: iconColor,
+                    '&:hover': { color: theme.palette.primary.main },
+                    '&.Mui-disabled': { color: iconDisabled }
+                  }}
+                >
+                  <AddIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
           </Box>
-        <TablePagination
-          component="div"
-          count={totalCount}
-          rowsPerPage={rowsPerPage}
-          page={page}
-          onPageChange={handleChangePage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-          rowsPerPageOptions={[10, 25, 50, 100, 200, 500]}
-          labelRowsPerPage="每页:"
-          labelDisplayedRows={({ from, to, count }: { from: number; to: number; count: number }) => `${from}-${to} 共 ${count} 行`}
-          sx={{
-            color: '#ffffff',
-            '& .MuiTablePagination-select': {
-              color: '#ffffff'
-            },
-            '& .MuiTablePagination-selectIcon': {
-              color: '#CCCCCC'
-            },
-            '& .MuiIconButton-root': {
-              color: '#CCCCCC',
-              '&:hover': {
-                bgcolor: '#4A4A4A'
-              },
-              '&.Mui-disabled': {
-                color: '#666666'
-              }
-            }
-          }}
-        />
+        </Box>
       </Box>
     </Box>
   );
