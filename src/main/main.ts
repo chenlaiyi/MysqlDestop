@@ -7,7 +7,8 @@ import { getConnectionPool, closeAllPools, checkConnectionHealth, recreatePool, 
 
 // 区分开发和生产环境的配置
 const storeOptions = {
-  name: process.env.NODE_ENV === 'production' ? 'config-release' : 'config-dev'
+  name: process.env.NODE_ENV === 'production' ? 'config-release' : 'config-dev',
+  projectName: 'diandian-mysql-client'
 };
 const store = new Store<any>(storeOptions);
 
