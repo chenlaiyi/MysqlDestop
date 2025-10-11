@@ -1,7 +1,7 @@
 {
   "name": "diandian-mysql-client",
   "productName": "点点够MySQL客户端",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "点点够数据库mysql版本 - 专业的MySQL数据库管理工具",
   "main": "dist/main/main.js",
   "scripts": {
