@@ -12,7 +12,8 @@ import {
   InputAdornment,
   IconButton,
   Divider,
-  Chip
+  Chip,
+  Tooltip
 } from '@mui/material';
 import {
   Storage as DatabaseIcon,
@@ -22,11 +23,11 @@ import {
   Search as SearchIcon,
   Storage as StorageIcon,
   Refresh as RefreshIcon,
-  Visibility as ViewIcon,
-  Functions as FunctionIcon,
-  Event as EventIcon,
-  Code as QueryIcon,
-  Backup as BackupIcon
+  LanRounded as LanRoundedIcon,
+  Add as AddIcon,
+  Edit as EditIcon,
+  LinkOff as DisconnectIcon,
+  Autorenew as AutorenewIcon
 } from '@mui/icons-material';
 import { t } from '../i18n';
 
@@ -40,16 +41,6 @@ interface DatabaseNavigatorProps {
   onDatabaseFeatureSelect?: (dbName: string, feature: string) => void;
   onRefresh: () => void;
 }
-
-// Database feature categories
-const DATABASE_FEATURES = [
-  { key: 'tables', icon: TableIcon, label: '表', color: 'primary' },
-  { key: 'views', icon: ViewIcon, label: '视图', color: 'secondary' },
-  { key: 'functions', icon: FunctionIcon, label: '函数', color: 'success' },
-  { key: 'events', icon: EventIcon, label: '事件', color: 'warning' },
-  { key: 'queries', icon: QueryIcon, label: '查询', color: 'info' },
-  { key: 'backup', icon: BackupIcon, label: '备份', color: 'error' }
-] as const;
 
 function DatabaseNavigator({
   databases,
@@ -104,55 +95,70 @@ function DatabaseNavigator({
     <Box sx={{ 
       width: '100%', 
       height: '100%', 
-      bgcolor: '#2B3A4A',  // 深蓝色背景
+      background: 'linear-gradient(180deg, #1b222e 0%, #11151d 100%)',
       display: 'flex',
       flexDirection: 'column',
-      borderRight: '1px solid #555555'
+      borderRight: '1px solid #0d1117'
     }}>
-      {/* 搜索框区域 */}
-      <Box sx={{ 
-        p: 1.5, 
-        borderBottom: '1px solid #555555',
-      }}>
-        <TextField
-          size="small"
-          fullWidth
-          placeholder="搜索数据库..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" sx={{ color: '#CCCCCC' }} />
-              </InputAdornment>
-            ),
-          }}
-          sx={{
-            '& .MuiOutlinedInput-root': {
-              backgroundColor: '#3E3E3E',
-              borderRadius: 1,
-              height: 28,
-              '& fieldset': {
-                borderColor: '#555555',
-              },
-              '&:hover fieldset': {
-                borderColor: '#4A90E2',
-              },
-              '&.Mui-focused fieldset': {
-                borderColor: '#4A90E2',
-                borderWidth: 1
-              },
-            },
-            '& .MuiInputBase-input': {
-              color: '#ffffff',
-              fontSize: '0.8rem',
-              padding: '4px 8px'
-            }
-          }}
-        />
+      <Box
+        sx={{
+          px: 1.5,
+          py: 1,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          borderBottom: '1px solid #0d1117'
+        }}
+      >
+        <Tooltip title={t('mainView.toolbar.connection')} arrow>
+          <IconButton size="small" sx={{ color: '#6adf9b' }}>
+            <LanRoundedIcon fontSize="inherit" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={t('mainView.toolbar.newQuery')} arrow>
+          <IconButton size="small" sx={{ color: '#6fb6ff' }}>
+            <AddIcon fontSize="inherit" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={t('mainView.toolbar.editConnection', { defaultValue: '编辑连接' })} arrow>
+          <IconButton size="small" sx={{ color: '#9aa6c8' }}>
+            <EditIcon fontSize="inherit" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={t('mainView.toolbar.disconnect', { defaultValue: '断开连接' })} arrow>
+          <IconButton size="small" sx={{ color: '#ff7878' }}>
+            <DisconnectIcon fontSize="inherit" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={t('mainView.toolbar.automation')} arrow>
+          <IconButton size="small" sx={{ color: '#6adfff' }}>
+            <AutorenewIcon fontSize="inherit" />
+          </IconButton>
+        </Tooltip>
+        <Box sx={{ flex: 1 }} />
+        <Tooltip title={t('tablesOverview.refreshTables')} arrow>
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => { void onRefresh(); }}
+              sx={{
+                bgcolor: '#1f2531',
+                color: '#e0e6f6',
+                border: '1px solid #2a303b',
+                width: 30,
+                height: 30,
+                '&:hover': {
+                  bgcolor: '#2b3445',
+                  borderColor: '#4a79c5'
+                }
+              }}
+            >
+              <RefreshIcon fontSize="inherit" />
+            </IconButton>
+          </span>
+        </Tooltip>
       </Box>
 
-      {/* 数据库列表 */}
       <Box sx={{ 
         flex: 1, 
         overflow: 'auto',
@@ -160,13 +166,13 @@ function DatabaseNavigator({
           width: 4
         },
         '&::-webkit-scrollbar-track': {
-          bgcolor: '#2B3A4A'
+          bgcolor: '#151922'
         },
         '&::-webkit-scrollbar-thumb': {
-          bgcolor: '#555555',
+          bgcolor: '#2a303b',
           borderRadius: 2,
           '&:hover': {
-            bgcolor: '#666666'
+            bgcolor: '#3a4250'
           }
         }
       }}>
@@ -180,8 +186,8 @@ function DatabaseNavigator({
             px: 2,
             textAlign: 'center'
           }}>
-            <StorageIcon sx={{ fontSize: 32, color: '#666666', mb: 1 }} />
-            <Typography variant="body2" sx={{ color: '#CCCCCC' }}>
+            <StorageIcon sx={{ fontSize: 32, color: '#4a79c5', mb: 1 }} />
+            <Typography variant="body2" sx={{ color: '#a0a8c0' }}>
               暂无数据库
             </Typography>
           </Box>
@@ -195,7 +201,6 @@ function DatabaseNavigator({
             
             return (
               <React.Fragment key={dbName}>
-                {/* 数据库节点 */}
                 <ListItem disablePadding>
                   <ListItemButton
                     onClick={() => toggleDatabase(dbName)}
@@ -203,33 +208,34 @@ function DatabaseNavigator({
                     sx={{
                       py: 0.5,
                       px: 1.5,
-                      minHeight: 24,
+                      minHeight: 28,
+                      borderRadius: 1,
                       '&:hover': {
-                        bgcolor: '#3A4A5A',
+                        bgcolor: '#222937'
                       },
                       '&.Mui-selected': {
-                        bgcolor: '#4A90E2',
+                        bgcolor: '#2a3345',
                         '&:hover': {
-                          bgcolor: '#357ABD'
+                          bgcolor: '#323e53'
                         }
-                      },
+                      }
                     }}
                   >
                     <ListItemIcon sx={{ minWidth: 24, mr: 0.5 }}>
                       <DatabaseIcon 
                         fontSize="small" 
                         sx={{ 
-                          color: isDatabaseSelected ? '#ffffff' : '#4A90E2',
-                          fontSize: 14
+                          color: isDatabaseSelected ? '#75a5ff' : '#5f7bc2',
+                          fontSize: 16
                         }} 
                       />
                     </ListItemIcon>
                     <ListItemText 
                       primary={dbName}
                       primaryTypographyProps={{
-                        fontSize: '0.8rem',
-                        fontWeight: isDatabaseSelected ? 500 : 400,
-                        color: isDatabaseSelected ? '#ffffff' : '#ffffff'
+                        fontSize: '0.82rem',
+                        fontWeight: isDatabaseSelected ? 600 : 500,
+                        color: isDatabaseSelected ? '#eef3ff' : '#c4cada'
                       }}
                     />
                     <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -237,15 +243,15 @@ function DatabaseNavigator({
                         <ExpandLess 
                           fontSize="small" 
                           sx={{ 
-                            color: isDatabaseSelected ? '#ffffff' : '#CCCCCC',
-                            fontSize: 14
+                            color: isDatabaseSelected ? '#75a5ff' : '#6f7687',
+                            fontSize: 18
                           }} 
                         /> : 
                         <ExpandMore 
                           fontSize="small" 
                           sx={{ 
-                            color: isDatabaseSelected ? '#ffffff' : '#CCCCCC',
-                            fontSize: 14
+                            color: isDatabaseSelected ? '#75a5ff' : '#6f7687',
+                            fontSize: 18
                           }} 
                         />
                       }
@@ -253,7 +259,6 @@ function DatabaseNavigator({
                   </ListItemButton>
                 </ListItem>
 
-                {/* 表列表 */}
                 <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                   <List component="div" disablePadding>
                     {dbTables.map((table, index) => {
@@ -266,36 +271,37 @@ function DatabaseNavigator({
                             onClick={() => handleTableSelect(dbName, tableName)}
                             selected={isTableSelected}
                             sx={{
-                              py: 0.25,
+                              py: 0.35,
                               px: 1,
                               ml: 2.5,
-                              minHeight: 20,
+                              minHeight: 24,
+                              borderRadius: 1,
                               '&:hover': {
-                                bgcolor: '#3A4A5A',
+                                bgcolor: '#202733'
                               },
                               '&.Mui-selected': {
-                                bgcolor: '#357ABD',
+                                bgcolor: '#273448',
                                 '&:hover': {
-                                  bgcolor: '#2E6AA8'
+                                  bgcolor: '#31425a'
                                 }
-                              },
+                              }
                             }}
                           >
-                            <ListItemIcon sx={{ minWidth: 20, mr: 0.5 }}>
+                            <ListItemIcon sx={{ minWidth: 20, mr: 0.75 }}>
                               <TableIcon 
                                 fontSize="small" 
                                 sx={{ 
-                                  color: isTableSelected ? '#ffffff' : '#4A90E2',
-                                  fontSize: 12
+                                  color: isTableSelected ? '#75a5ff' : '#5f7bc2',
+                                  fontSize: 14
                                 }} 
                               />
                             </ListItemIcon>
                             <ListItemText 
                               primary={tableName}
                               primaryTypographyProps={{
-                                fontSize: '0.75rem',
-                                fontWeight: isTableSelected ? 500 : 400,
-                                color: isTableSelected ? '#ffffff' : '#ffffff'
+                                fontSize: '0.76rem',
+                                fontWeight: isTableSelected ? 600 : 400,
+                                color: isTableSelected ? '#eef3ff' : '#c4cada'
                               }}
                             />
                           </ListItemButton>
@@ -309,6 +315,72 @@ function DatabaseNavigator({
           })}
         </List>
         )}
+      </Box>
+
+      <Box sx={{ 
+        p: 1.25,
+        borderTop: '1px solid #0d1117',
+        backgroundColor: '#131722'
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <TextField
+            size="small"
+            fullWidth
+            placeholder="搜索数据库..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" sx={{ color: '#7f8797' }} />
+                </InputAdornment>
+              ),
+            }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                backgroundColor: '#1b1f29',
+                borderRadius: 1,
+                height: 32,
+                '& fieldset': {
+                  borderColor: '#2c3240',
+                },
+                '&:hover fieldset': {
+                  borderColor: '#3f8cff',
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: '#3f8cff',
+                  borderWidth: 1
+                },
+              },
+              '& .MuiInputBase-input': {
+                color: '#e9eefc',
+                fontSize: '0.8rem',
+                padding: '6px 8px'
+              }
+            }}
+          />
+          <Tooltip title={t('tablesOverview.refreshTables')}>
+            <span>
+              <IconButton
+                size="small"
+                onClick={() => { void onRefresh(); }}
+                sx={{
+                  bgcolor: '#1b1f29',
+                  color: '#e0e6f6',
+                  border: '1px solid #2c3240',
+                  width: 30,
+                  height: 30,
+                  '&:hover': {
+                    bgcolor: '#253043',
+                    borderColor: '#4a79c5'
+                  }
+                }}
+              >
+                <RefreshIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Box>
       </Box>
     </Box>
   );

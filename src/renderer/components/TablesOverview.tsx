@@ -15,7 +15,12 @@ import {
   TextField,
   InputAdornment,
   CircularProgress,
-  Alert
+  Alert,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import {
   TableChart as TableIcon,
@@ -25,6 +30,7 @@ import {
   Delete as DeleteIcon,
   Refresh as RefreshIcon
 } from '@mui/icons-material';
+import { t } from '../i18n';
 
 interface TableInfo {
   name: string;
@@ -42,7 +48,7 @@ interface TablesOverviewProps {
   database: string;
   tables: TableInfo[];
   onTableSelect: (tableName: string) => void;
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
   loading?: boolean;
 }
 
@@ -56,11 +62,120 @@ function TablesOverview({
   const [searchTerm, setSearchTerm] = useState('');
   const [detailedTables, setDetailedTables] = useState<TableInfo[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [structureDialogOpen, setStructureDialogOpen] = useState(false);
+  const [structureTarget, setStructureTarget] = useState<string | null>(null);
+  const [structureSql, setStructureSql] = useState('');
+  const [structureLoading, setStructureLoading] = useState(false);
+  const [structureError, setStructureError] = useState<string | null>(null);
+  const [structureSuccess, setStructureSuccess] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [bannerMessage, setBannerMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const filteredTables = detailedTables.filter(table =>
     table.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (table.table_comment && table.table_comment.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  const sanitizeIdentifier = (name: string) => `\`${name.replace(/`/g, '``')}\``;
+
+  const openStructureDialog = async (tableName: string) => {
+    if (!database) return;
+    setStructureDialogOpen(true);
+    setStructureTarget(tableName);
+    setStructureSql('');
+    setStructureError(null);
+    setStructureSuccess(null);
+    setStructureLoading(true);
+    try {
+      const result = await window.mysqlApi.executeQuery(
+        `SHOW CREATE TABLE ${sanitizeIdentifier(tableName)}`,
+        database
+      );
+      if (!result.success) {
+        throw new Error(result.error || t('tablesOverview.loadStructureFailed'));
+      }
+      const row = Array.isArray(result.data) && result.data.length > 0 ? result.data[0] : null;
+      const createSql = row ? row['Create Table'] || row['Create Table '] || '' : '';
+      setStructureSql(createSql);
+      if (!createSql) {
+        setStructureError(t('tablesOverview.noStructureSql'));
+      }
+    } catch (error: any) {
+      setStructureError(error.message || t('tablesOverview.loadStructureFailed'));
+    } finally {
+      setStructureLoading(false);
+    }
+  };
+
+  const closeStructureDialog = () => {
+    if (structureLoading) return;
+    setStructureDialogOpen(false);
+    setStructureTarget(null);
+    setStructureSql('');
+    setStructureError(null);
+    setStructureSuccess(null);
+  };
+
+  const handleStructureSave = async () => {
+    if (!database || !structureTarget) return;
+    if (!structureSql.trim()) {
+      setStructureError(t('tablesOverview.structureEmpty'));
+      return;
+    }
+    setStructureLoading(true);
+    setStructureError(null);
+    setStructureSuccess(null);
+    try {
+      const result = await window.mysqlApi.executeQuery(structureSql, database);
+      if (!result.success) {
+        throw new Error(result.error || t('tablesOverview.structureSaveFailed'));
+      }
+      setStructureSuccess(t('tablesOverview.structureSavedSuccess'));
+      setBannerMessage({
+        type: 'success',
+        text: t('tablesOverview.structureSavedBanner', { table: structureTarget })
+      });
+      await Promise.resolve(onRefresh());
+    } catch (error: any) {
+      setStructureError(error.message || t('tablesOverview.structureSaveFailed'));
+    } finally {
+      setStructureLoading(false);
+    }
+  };
+
+  const handleDeleteTable = (tableName: string) => {
+    setDeleteTarget(tableName);
+  };
+
+  const closeDeleteDialog = () => {
+    if (deleteLoading) return;
+    setDeleteTarget(null);
+  };
+
+  const confirmDeleteTable = async () => {
+    if (!database || !deleteTarget) return;
+    setDeleteLoading(true);
+    try {
+      const result = await window.mysqlApi.dropTable(database, deleteTarget);
+      if (!result.success) {
+        throw new Error(result.error || t('tablesOverview.deleteFailed'));
+      }
+      setBannerMessage({
+        type: 'success',
+        text: t('tablesOverview.deleteSuccessBanner', { table: deleteTarget })
+      });
+      setDeleteTarget(null);
+      await Promise.resolve(onRefresh());
+    } catch (error: any) {
+      setBannerMessage({
+        type: 'error',
+        text: error.message || t('tablesOverview.deleteFailed')
+      });
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   // 获取表的详细信息
   useEffect(() => {
@@ -123,10 +238,10 @@ function TablesOverview({
               fontWeight: 600,
               fontSize: '1rem'
             }}>
-              {database} - 表概览
+              {t('tablesOverview.title', { database })}
             </Typography>
             <Chip 
-              label={`${filteredTables.length} 个表`}
+              label={t('tablesOverview.totalTables', { count: filteredTables.length })}
               size="small"
               variant="outlined"
               sx={{
@@ -139,9 +254,9 @@ function TablesOverview({
             />
           </Box>
           
-          <Tooltip title="刷新表信息">
+          <Tooltip title={t('tablesOverview.refreshTables')}>
             <IconButton 
-              onClick={onRefresh}
+              onClick={() => { void onRefresh(); }}
               size="small"
               sx={{
                 bgcolor: '#ffffff',
@@ -163,7 +278,7 @@ function TablesOverview({
         <TextField
           fullWidth
           size="small"
-          placeholder="搜索表名或注释..."
+          placeholder={t('tablesOverview.searchPlaceholder')}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           InputProps={{
@@ -197,17 +312,29 @@ function TablesOverview({
         />
       </Box>
 
+      {bannerMessage && (
+        <Box sx={{ px: 2, pt: 2 }}>
+          <Alert 
+            severity={bannerMessage.type} 
+            onClose={() => setBannerMessage(null)}
+            sx={{ borderRadius: 2 }}
+          >
+            {bannerMessage.text}
+          </Alert>
+        </Box>
+      )}
+
       {/* 表格区域 */}
       <Box sx={{ flex: 1, overflow: 'auto', p: 1.5 }}>
-        {loading || loadingDetails ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
-            <CircularProgress />
-          </Box>
+      {loading || loadingDetails ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
+          <CircularProgress />
+        </Box>
         ) : filteredTables.length === 0 ? (
           <Alert severity="info" sx={{ mt: 2 }}>
-            {searchTerm ? `未找到匹配 "${searchTerm}" 的表` : '该数据库中没有表'}
+            {searchTerm ? t('tablesOverview.noSearchResult', { keyword: searchTerm }) : t('tablesOverview.noTables')}
           </Alert>
-        ) : (
+      ) : (
           <TableContainer 
             component={Paper} 
             sx={{ 
@@ -218,9 +345,9 @@ function TablesOverview({
           >
             <Table size="small" sx={{
               '& .MuiTableCell-root': {
-                fontSize: '0.55rem',
+                fontSize: '0.5rem',
                 padding: '4px 8px',
-                lineHeight: 1.1
+                lineHeight: 0.95
               },
               '& .MuiTableHead-root .MuiTableCell-root': {
                 backgroundColor: '#f8f9fa',
@@ -232,7 +359,7 @@ function TablesOverview({
                 height: 36 // 表头高度再增加
               },
               '& .MuiTableBody-root .MuiTableRow-root': {
-                height: 28,
+                height: 24,
                 minHeight: 28,
                 '&:hover': {
                   backgroundColor: '#f8f9fa',
@@ -247,15 +374,15 @@ function TablesOverview({
             }}>
               <TableHead>
                 <TableRow>
-                  <TableCell>表名</TableCell>
-                  <TableCell>引擎</TableCell>
-                  <TableCell align="right">行数</TableCell>
-                  <TableCell align="right">数据大小</TableCell>
-                  <TableCell align="right">索引大小</TableCell>
-                  <TableCell align="right">自增值</TableCell>
-                  <TableCell>创建时间</TableCell>
-                  <TableCell>注释</TableCell>
-                  <TableCell align="center">操作</TableCell>
+                  <TableCell>{t('tablesOverview.columns.name')}</TableCell>
+                  <TableCell>{t('tablesOverview.columns.engine')}</TableCell>
+                  <TableCell align="right">{t('tablesOverview.columns.rows')}</TableCell>
+                  <TableCell align="right">{t('tablesOverview.columns.dataSize')}</TableCell>
+                  <TableCell align="right">{t('tablesOverview.columns.indexSize')}</TableCell>
+                  <TableCell align="right">{t('tablesOverview.columns.autoIncrement')}</TableCell>
+                  <TableCell>{t('tablesOverview.columns.createdAt')}</TableCell>
+                  <TableCell>{t('tablesOverview.columns.comment')}</TableCell>
+                  <TableCell align="center">{t('tablesOverview.columns.actions')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -268,14 +395,14 @@ function TablesOverview({
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                         <TableIcon sx={{ color: '#3498db', fontSize: 12 }} />
-                        <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.55rem' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.5rem' }}>
                           {table.name}
                         </Typography>
                       </Box>
                     </TableCell>
                     <TableCell>
                       <Chip 
-                        label={table.engine || 'Unknown'}
+                        label={table.engine || t('tablesOverview.engineUnknown')}
                         size="small"
                         variant="outlined"
                         sx={{
@@ -290,22 +417,22 @@ function TablesOverview({
                       />
                     </TableCell>
                     <TableCell align="right">
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.55rem' }}>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.5rem' }}>
                         {table.rows !== undefined ? formatNumber(table.rows) : '-'}
                       </Typography>
                     </TableCell>
                     <TableCell align="right">
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.55rem' }}>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.5rem' }}>
                         {table.data_length !== undefined ? formatFileSize(table.data_length) : '-'}
                       </Typography>
                     </TableCell>
                     <TableCell align="right">
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.55rem' }}>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.5rem' }}>
                         {table.index_length !== undefined ? formatFileSize(table.index_length) : '-'}
                       </Typography>
                     </TableCell>
                     <TableCell align="right">
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.55rem' }}>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.5rem' }}>
                         {table.auto_increment !== undefined ? table.auto_increment : '-'}
                       </Typography>
                     </TableCell>
@@ -331,7 +458,7 @@ function TablesOverview({
                     </TableCell>
                     <TableCell align="center">
                       <Box sx={{ display: 'flex', gap: 0.2 }}>
-                        <Tooltip title="查看数据">
+                        <Tooltip title={t('tablesOverview.viewData')}>
                           <IconButton 
                             size="small"
                             onClick={(e) => {
@@ -343,24 +470,24 @@ function TablesOverview({
                             <ViewIcon sx={{ fontSize: 14 }} />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="编辑结构">
+                        <Tooltip title={t('tablesOverview.editStructure')}>
                           <IconButton 
                             size="small"
                             onClick={(e) => {
                               e.stopPropagation();
-                              // TODO: 实现编辑表结构功能
+                              openStructureDialog(table.name);
                             }}
                             sx={{ color: '#f39c12', padding: '2px' }}
                           >
                             <EditIcon sx={{ fontSize: 14 }} />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="删除表">
+                        <Tooltip title={t('tablesOverview.deleteTable')}>
                           <IconButton 
                             size="small"
                             onClick={(e) => {
                               e.stopPropagation();
-                              // TODO: 实现删除表功能
+                              handleDeleteTable(table.name);
                             }}
                             sx={{ color: '#e74c3c', padding: '2px' }}
                           >
@@ -376,6 +503,99 @@ function TablesOverview({
           </TableContainer>
         )}
       </Box>
+
+      <Dialog
+        open={structureDialogOpen}
+        onClose={closeStructureDialog}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>
+          {structureTarget ? t('tablesOverview.structureDialogTitle', { table: structureTarget }) : t('tablesOverview.structureDialogFallback')}
+        </DialogTitle>
+        <DialogContent dividers>
+          {structureLoading && !structureSql && !structureError ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, gap: 2 }}>
+              <CircularProgress size={24} />
+              <Typography variant="body2" color="text.secondary">
+                {t('tablesOverview.loadingStructure')}
+              </Typography>
+            </Box>
+          ) : (
+            <Box>
+              {structureError && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {structureError}
+                </Alert>
+              )}
+              {structureSuccess && (
+                <Alert severity="success" sx={{ mb: 2 }}>
+                  {structureSuccess}
+                </Alert>
+              )}
+              <TextField
+                fullWidth
+                multiline
+                minRows={12}
+                label={t('tablesOverview.structureSqlLabel')}
+                value={structureSql}
+                onChange={(e) => setStructureSql(e.target.value)}
+                InputProps={{
+                  sx: {
+                    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+                    fontSize: 13,
+                    lineHeight: 1.6
+                  }
+                }}
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeStructureDialog} disabled={structureLoading}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            onClick={handleStructureSave}
+            disabled={structureLoading || !structureSql.trim()}
+            variant="contained"
+          >
+            {structureLoading ? t('common.saving') : t('common.save')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onClose={closeDeleteDialog}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>{t('tablesOverview.deleteDialogTitle')}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            {t('tablesOverview.deleteDialogMessage', { table: deleteTarget || '' })}
+          </Typography>
+          {bannerMessage?.type === 'error' && deleteTarget && (
+            <Alert severity="error">
+              {bannerMessage.text}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDeleteDialog} disabled={deleteLoading}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            onClick={confirmDeleteTable}
+            color="error"
+            variant="contained"
+            disabled={deleteLoading}
+          >
+            {deleteLoading ? t('common.working') : t('tablesOverview.deleteConfirmButton')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

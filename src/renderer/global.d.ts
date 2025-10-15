@@ -13,6 +13,16 @@ declare global {
         orderDirection?: 'asc' | 'desc',
         searchTerm?: string
       ) => Promise<{ success: boolean; error?: string; data?: any[]; totalCount?: number; columns?: string[] }>;
+      getViews: (database: string) => Promise<{ success: boolean; error?: string; data?: any[] }>;
+      getViewDefinition: (database: string, viewName: string) => Promise<{ success: boolean; error?: string; data?: any[] }>;
+      getFunctions: (database: string) => Promise<{ success: boolean; error?: string; data?: any[] }>;
+      getFunctionDefinition: (database: string, functionName: string) => Promise<{ success: boolean; error?: string; data?: any[] }>;
+      getProcedures: (database: string) => Promise<{ success: boolean; error?: string; data?: any[] }>;
+      getProcedureDefinition: (database: string, procedureName: string) => Promise<{ success: boolean; error?: string; data?: any[] }>;
+      getEvents: (database: string) => Promise<{ success: boolean; error?: string; data?: any[] }>;
+      getEventDefinition: (database: string, eventName: string) => Promise<{ success: boolean; error?: string; data?: any[] }>;
+      getRoutineParameters: (database: string, routineName: string, routineType: 'FUNCTION' | 'PROCEDURE') => Promise<{ success: boolean; error?: string; data?: any[] }>;
+      executeRoutine: (database: string, routineName: string, routineType: 'FUNCTION' | 'PROCEDURE', args: any[]) => Promise<{ success: boolean; error?: string; data?: any }>;
       storeConfig: (config: any) => Promise<{ success: boolean }>;
       getConnections: () => Promise<{[key: string]: any}>;
       saveConnection: (name: string, config: any) => Promise<{ success: boolean }>;

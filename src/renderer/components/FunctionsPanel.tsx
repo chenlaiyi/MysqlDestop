@@ -39,7 +39,8 @@ import {
 
 interface FunctionsPanelProps {
   database: string;
-  onFunctionSelect?: (functionName: string, functionData: any) => void;
+  onRoutineSelect?: (routineName: string, routineData: any) => void | Promise<void>;
+  onRoutineExecute?: (routineName: string, routineData: any) => void | Promise<void>;
 }
 
 interface FunctionInfo {
@@ -55,7 +56,7 @@ interface FunctionInfo {
   ROUTINE_COMMENT: string;
 }
 
-function FunctionsPanel({ database, onFunctionSelect }: FunctionsPanelProps) {
+function FunctionsPanel({ database, onRoutineSelect, onRoutineExecute }: FunctionsPanelProps) {
   const [functions, setFunctions] = useState<FunctionInfo[]>([]);
   const [procedures, setProcedures] = useState<FunctionInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -125,11 +126,11 @@ function FunctionsPanel({ database, onFunctionSelect }: FunctionsPanelProps) {
     setExpandedItems(newExpanded);
   };
 
-  const handleItemSelect = (item: FunctionInfo) => {
+  const handleItemSelect = async (item: FunctionInfo) => {
     setSelectedItem(item);
-    if (onFunctionSelect) {
+    if (onRoutineSelect) {
       const name = item.FUNCTION_NAME || item.PROCEDURE_NAME || '';
-      onFunctionSelect(name, item);
+      await onRoutineSelect(name, item);
     }
   };
 
@@ -165,7 +166,7 @@ function FunctionsPanel({ database, onFunctionSelect }: FunctionsPanelProps) {
             <React.Fragment key={name}>
               <ListItem disablePadding>
                 <ListItemButton
-                  onClick={() => handleItemSelect(item)}
+                  onClick={() => { void handleItemSelect(item); }}
                   selected={!!(selectedItem && (selectedItem.FUNCTION_NAME || selectedItem.PROCEDURE_NAME) === name)}
                 >
                   <ListItemIcon>
@@ -245,7 +246,12 @@ function FunctionsPanel({ database, onFunctionSelect }: FunctionsPanelProps) {
                       <Button
                         size="small"
                         startIcon={<ExecuteIcon />}
-                        onClick={() => handleItemSelect(item)}
+                        onClick={async () => {
+                          await handleItemSelect(item);
+                          if (onRoutineExecute) {
+                            await onRoutineExecute(name, item);
+                          }
+                        }}
                       >
                         执行
                       </Button>

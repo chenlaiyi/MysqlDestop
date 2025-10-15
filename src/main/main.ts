@@ -236,6 +236,24 @@ ipcMain.handle('mysql:createTable', async (event, dbName: string, tableName: str
   }
 });
 
+ipcMain.handle('mysql:dropTable', async (event, dbName: string, tableName: string) => {
+  let connection: mysql.PoolConnection | undefined;
+  try {
+    if (!currentConnectionConfig) {
+      throw new Error('No active connection configuration found.');
+    }
+    const pool = getConnectionPool({ ...currentConnectionConfig, database: dbName });
+    connection = await pool.getConnection();
+    await connection.execute(`DROP TABLE IF EXISTS ??`, [tableName]);
+    return { success: true };
+  } catch (error) {
+    const err = error as Error;
+    return { success: false, error: err.message };
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
 ipcMain.handle('mysql:getTables', async (event, database) => {
   console.log('Received request for tables in database:', database);
   try {
@@ -906,6 +924,67 @@ ipcMain.handle('mysql:getProcedureDefinition', async (event, database, procedure
   } catch (error) {
     const err = error as Error;
     return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('mysql:getRoutineParameters', async (event, database, routineName: string, routineType: 'FUNCTION' | 'PROCEDURE') => {
+  console.log('Received request for routine parameters:', routineName, 'type:', routineType, 'in database:', database);
+  let connection: mysql.PoolConnection | undefined;
+  try {
+    if (!currentConnectionConfig) {
+      throw new Error('No active connection configuration found.');
+    }
+    const pool = getConnectionPool({ ...currentConnectionConfig, database });
+    connection = await pool.getConnection();
+    const [rows] = await connection.query<mysql.RowDataPacket[]>(`
+      SELECT 
+        PARAMETER_NAME,
+        DTD_IDENTIFIER,
+        PARAMETER_MODE,
+        ORDINAL_POSITION
+      FROM INFORMATION_SCHEMA.PARAMETERS
+      WHERE SPECIFIC_SCHEMA = ?
+        AND SPECIFIC_NAME = ?
+        AND (PARAMETER_MODE IS NOT NULL OR ORDINAL_POSITION > 0)
+      ORDER BY ORDINAL_POSITION
+    `, [database, routineName]);
+    return { success: true, data: rows };
+  } catch (error) {
+    const err = error as Error;
+    return { success: false, error: err.message };
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+ipcMain.handle('mysql:executeRoutine', async (event, database, routineName: string, routineType: 'FUNCTION' | 'PROCEDURE', args: any[]) => {
+  console.log('Received request to execute routine:', routineName, 'type:', routineType, 'args:', args);
+  let connection: mysql.PoolConnection | undefined;
+  try {
+    if (!currentConnectionConfig) {
+      throw new Error('No active connection configuration found.');
+    }
+    const pool = getConnectionPool({ ...currentConnectionConfig, database });
+    connection = await pool.getConnection();
+
+    const placeholders = args.map(() => '?').join(', ');
+    if (routineType === 'FUNCTION') {
+      const fnName = connection.escapeId(routineName);
+      const sql = `SELECT ${fnName}(${placeholders}) AS result`;
+      const [rows] = await connection.query(sql, args);
+      return { success: true, data: rows };
+    } else {
+      const procName = connection.escapeId(routineName);
+      const callSql = `CALL ${procName}(${placeholders})`;
+      const [rows] = await connection.query(callSql, args);
+      return { success: true, data: rows };
+    }
+  } catch (error) {
+    const err = error as Error;
+    console.error('Execute routine failed:', err);
+    return { success: false, error: err.message };
+  } finally {
+    if (connection) connection.release();
   }
 });
 
