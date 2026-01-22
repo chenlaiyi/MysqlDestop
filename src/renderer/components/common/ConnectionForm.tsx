@@ -14,7 +14,7 @@ import InputLabel from '@mui/material/InputLabel';
 import FormControl from '@mui/material/FormControl';
 import IconButton from '@mui/material/IconButton';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { t } from '../i18n';
+import { t } from '../../i18n';
 
 const lightTheme = createTheme({
   palette: {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Button, Typography, Paper } from '@mui/material';
-import { t } from '../i18n';
+import { t } from '../../i18n';
 
 interface SyncPlanViewProps {
   plan: string[];

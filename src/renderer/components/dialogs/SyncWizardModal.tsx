@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Box, Typography, Button, Stepper, Step, StepLabel, Select, MenuItem, FormControl, InputLabel, CircularProgress, Paper, Alert, SelectChangeEvent, Checkbox, FormControlLabel } from '@mui/material';
-import SyncPlanView from './SyncPlanView';
-import { t } from '../i18n';
+import SyncPlanView from '../panels/SyncPlanView';
+import { t } from '../../i18n';
 import ConfirmationDialog from './ConfirmationDialog';
 
 const style = {

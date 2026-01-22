@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Box, Typography, TextField, Button } from '@mui/material';
-import { t } from '../i18n';
+import { t } from '../../i18n';
 
 interface EditRowModalProps {
   open: boolean;

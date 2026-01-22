@@ -15,7 +15,7 @@ import {
   Alert,
   CircularProgress
 } from '@mui/material';
-import { t } from '../i18n';
+import { t } from '../../i18n';
 
 interface DataExportModalProps {
   open: boolean;

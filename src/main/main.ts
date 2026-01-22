@@ -1080,12 +1080,7 @@ function createWindow() {
   // 窗口加载完成后显示
   win.once('ready-to-show', () => {
     win.show();
-    
-    // 只在开发环境下自动打开开发者工具
-    if (process.env.NODE_ENV === 'development') {
-      win.webContents.openDevTools();
-    }
-    
+
     // 可选：启动时聚焦窗口
     if (process.platform === 'darwin') {
       win.focus();

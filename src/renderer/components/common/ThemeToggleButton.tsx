@@ -4,7 +4,7 @@ import {
   Brightness4 as DarkModeIcon, 
   Brightness7 as LightModeIcon 
 } from '@mui/icons-material';
-import { useTheme } from '../theme/ThemeProvider';
+import { useTheme } from '../../theme/ThemeProvider';
 
 interface ThemeToggleButtonProps {
   size?: 'small' | 'medium' | 'large';

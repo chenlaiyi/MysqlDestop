@@ -45,8 +45,8 @@ import {
   Settings as SettingsIcon
 } from '@mui/icons-material';
 import AceEditor from 'react-ace';
-import { t } from '../i18n';
-import ThemeToggleButton from './ThemeToggleButton';
+import { t } from '../../i18n';
+import ThemeToggleButton from '../common/ThemeToggleButton';
 
 // Import ace editor modes and themes
 import 'ace-builds/src-noconflict/mode-mysql';

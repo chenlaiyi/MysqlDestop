@@ -30,7 +30,7 @@ import {
   Delete as DeleteIcon,
   Refresh as RefreshIcon
 } from '@mui/icons-material';
-import { t } from '../i18n';
+import { t } from '../../i18n';
 
 interface TableInfo {
   name: string;

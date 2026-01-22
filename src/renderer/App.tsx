@@ -1,51 +1,35 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
-  Avatar,
   Box,
-  Button,
-  Chip,
-  IconButton,
-  Stack,
+  Tab,
+  Tabs,
   Tooltip,
-  Typography
+  Typography,
+  useTheme as useMuiTheme
 } from '@mui/material';
-import { alpha, useTheme } from '@mui/material/styles';
 import {
-  AddRounded as AddIcon,
-  TravelExploreRounded as QueryIcon,
-  HubRounded as ModelIcon,
-  AssessmentRounded as ReportIcon,
-  CloudSyncRounded as CloudIcon,
-  AutoAwesomeMotionRounded as AutomateIcon,
-  LanRounded as ConnectionIcon,
-  SettingsRounded as SettingsIcon,
-  PersonRounded as ProfileIcon,
-  PlayArrowRounded as PlayIcon,
-  FolderSpecialRounded as FolderIcon,
-  AddCircleRounded as AddCircleIcon,
-  ScienceRounded as LabIcon,
-  BackupTableRounded as StructIcon,
-  ViewQuiltRounded as GridViewIcon,
-  ViewAgendaRounded as ListViewIcon,
-  PowerSettingsNewRounded as DisconnectIcon
+  LinkRounded as ConnectIcon,
+  PostAddRounded as NewQueryIcon,
+  TableChartRounded as TableIcon,
+  ViewListRounded as ViewIcon,
+  FunctionsRounded as FunctionIcon,
+  PeopleRounded as UserIcon,
+  HelpOutlineRounded as OtherIcon,
+  SearchRounded as QueryIcon,
+  BackupRounded as BackupIcon,
+  SmartToyRounded as AutoRunIcon,
+  BarChartRounded as ChartIcon,
+  InsightsRounded as ModelIcon,
+  CloseRounded as CloseIcon,
+  CodeRounded as SqlIcon
 } from '@mui/icons-material';
-import ExactMainView from './components/ExactMainView';
-import WelcomeScreen from './components/WelcomeScreen';
-import NewNavicatConnectionDialog, { NavicatConnectionPayload } from './components/NewNavicatConnectionDialog';
+import ConnectionSidebar from './components/layout/ConnectionSidebar';
+import NewNavicatConnectionDialog, { NavicatConnectionPayload } from './components/dialogs/ConnectionDialog';
+import ThemeToggleButton from './components/common/ThemeToggleButton';
+import ExactDataTable from './components/data/DataTable';
+import QueryEditor from './components/editor/QueryEditor';
 import { ConnectionProfile } from './types';
-
-const topQuickActions = [
-  { key: 'connection', label: '连接', icon: <ConnectionIcon fontSize="small" />, color: '#2ea8ff' },
-  { key: 'folder', label: '资源管理', icon: <FolderIcon fontSize="small" />, color: '#38cfff' },
-  { key: 'new', label: '新建', icon: <AddCircleIcon fontSize="small" />, color: '#38e0a2' },
-  { key: 'query', label: '查询', icon: <QueryIcon fontSize="small" />, color: '#ffd166' },
-  { key: 'model', label: '模型', icon: <ModelIcon fontSize="small" />, color: '#a367ff' },
-  { key: 'table', label: '表设计', icon: <StructIcon fontSize="small" />, color: '#ff90dd' },
-  { key: 'report', label: '报表', icon: <ReportIcon fontSize="small" />, color: '#1fd1ff' },
-  { key: 'cloud', label: '云同步', icon: <CloudIcon fontSize="small" />, color: '#55b0ff' },
-  { key: 'lab', label: '自动化', icon: <AutomateIcon fontSize="small" />, color: '#ff8f5a' },
-  { key: 'lab2', label: '实验室', icon: <LabIcon fontSize="small" />, color: '#9aff76' }
-];
+import { useTheme } from './theme/ThemeProvider';
 
 const connectionToProfile = (payload: NavicatConnectionPayload): ConnectionProfile => ({
   id: payload.id || `${payload.name || payload.host}-${Date.now()}`,
@@ -75,18 +59,34 @@ const profileToStoreConfig = (profile: ConnectionProfile) => ({
   description: profile.description
 });
 
+const TOOLBAR_HEIGHT = 70;
+const SIDEBAR_WIDTH = 200;
+
+interface TabItem {
+  id: string;
+  type: 'table' | 'query';
+  label: string;
+  database: string;
+  table?: string;  // 仅 table 类型需要
+}
+
+let queryCounter = 0;
+
 const App: React.FC = () => {
-  const theme = useTheme();
+  const muiTheme = useMuiTheme();
+  const { isDark } = useTheme();
   const [savedProfiles, setSavedProfiles] = useState<ConnectionProfile[]>([]);
   const [connectedProfile, setConnectedProfile] = useState<ConnectionProfile | null>(null);
   const [databases, setDatabases] = useState<string[]>([]);
+  const [selectedDatabase, setSelectedDatabase] = useState<string | null>(null);
+  const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectingProfileId, setConnectingProfileId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [showConnectionDialog, setShowConnectionDialog] = useState(false);
   const [connectionDialogMode, setConnectionDialogMode] = useState<'create' | 'edit'>('create');
   const [connectionDialogProfile, setConnectionDialogProfile] = useState<ConnectionProfile | null>(null);
+  const [tabs, setTabs] = useState<TabItem[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
 
   const loadConnections = useCallback(async () => {
     try {
@@ -118,7 +118,6 @@ const App: React.FC = () => {
   const handleConnect = async (profile: ConnectionProfile) => {
     setIsConnecting(true);
     setConnectingProfileId(profile.id);
-    setConnectionError(null);
 
     try {
       const config = {
@@ -136,10 +135,10 @@ const App: React.FC = () => {
         setConnectedProfile(profile);
         const dbList = (result.data || []).map((row: any) => row.Database || row.database || row);
         setDatabases(dbList);
-        const updatedProfile: ConnectionProfile = {
-          ...profile,
-          lastUsed: new Date()
-        };
+        setSelectedDatabase(null);
+        setSelectedTable(null);
+
+        const updatedProfile: ConnectionProfile = { ...profile, lastUsed: new Date() };
         setSavedProfiles((prev) => {
           const others = prev.filter((item) => item.id !== updatedProfile.id);
           return [updatedProfile, ...others];
@@ -153,19 +152,20 @@ const App: React.FC = () => {
       }
     } catch (error: any) {
       console.error('连接错误:', error);
-      setConnectionError(error?.message || String(error));
-      alert(`连接失败: ${error}`);
+      alert(`连接失败: ${error?.message || error}`);
     } finally {
       setIsConnecting(false);
       setConnectingProfileId(null);
     }
   };
 
-  const handleSelectProfile = (profileId: string) => {
-    const profile = savedProfiles.find((item) => item.id === profileId);
-    if (profile) {
-      handleConnect(profile);
-    }
+  const handleDisconnect = () => {
+    setConnectedProfile(null);
+    setDatabases([]);
+    setSelectedDatabase(null);
+    setSelectedTable(null);
+    setTabs([]);
+    setActiveTabId(null);
   };
 
   const handleToggleFavorite = async (profileId: string) => {
@@ -190,8 +190,7 @@ const App: React.FC = () => {
     await window.mysqlApi.deleteConnection(profile.name);
     setSavedProfiles((prev) => prev.filter((item) => item.id !== profileId));
     if (connectedProfile?.id === profileId) {
-      setConnectedProfile(null);
-      setDatabases([]);
+      handleDisconnect();
     }
   };
 
@@ -203,12 +202,6 @@ const App: React.FC = () => {
     await window.mysqlApi.saveConnection(normalized.name, profileToStoreConfig(normalized));
     await loadConnections();
     await handleConnect(normalized);
-  };
-
-  const handleDisconnect = () => {
-    setConnectedProfile(null);
-    setDatabases([]);
-    setConnectionError(null);
   };
 
   const openCreateConnectionDialog = () => {
@@ -223,245 +216,226 @@ const App: React.FC = () => {
     setShowConnectionDialog(true);
   };
 
-  const connectionStatusChip = useMemo(() => {
-    if (isConnecting) {
-      return <Chip color="primary" variant="outlined" icon={<PlayIcon fontSize="small" />} label="连接中" />;
-    }
-    if (connectedProfile) {
-      return <Chip color="success" variant="filled" icon={<PlayIcon fontSize="small" />} label="连接就绪" sx={{ fontWeight: 600 }} />;
-    }
-    return <Chip variant="outlined" label="未连接" sx={{ fontWeight: 600 }} />;
-  }, [connectedProfile, isConnecting]);
-
-  const isConnected = Boolean(connectedProfile);
-
-  const navigatorProfiles = useMemo(() => {
-    if (connectedProfile && !savedProfiles.some((profile) => profile.id === connectedProfile.id)) {
-      return [connectedProfile, ...savedProfiles];
-    }
-    return savedProfiles;
-  }, [savedProfiles, connectedProfile]);
-
-  const handleViewModeChange = (mode: 'grid' | 'list') => {
-    setViewMode(mode);
+  const handleDatabaseSelect = (database: string) => {
+    setSelectedDatabase(database);
+    setSelectedTable(null);
   };
 
-  const topBarBg = 'linear-gradient(180deg, rgba(33,40,54,0.98) 0%, rgba(19,24,33,0.98) 100%)';
-  const separatorColor = alpha(theme.palette.common.white, theme.palette.mode === 'dark' ? 0.08 : 0.16);
+  const handleTableSelect = (database: string, table: string) => {
+    setSelectedDatabase(database);
+    setSelectedTable(table);
 
-  const HEADER_HEIGHT = 88;
-  const FOOTER_HEIGHT = 52;
+    // 添加或激活标签页
+    const tabId = `table:${database}.${table}`;
+    const existingTab = tabs.find(t => t.id === tabId);
+    if (!existingTab) {
+      setTabs(prev => [...prev, { id: tabId, type: 'table', label: table, database, table }]);
+    }
+    setActiveTabId(tabId);
+  };
+
+  const handleViewSelect = (database: string, view: string) => {
+    setSelectedDatabase(database);
+
+    // 视图也使用 DataTable 展示，类型为 'table'
+    const tabId = `view:${database}.${view}`;
+    const existingTab = tabs.find(t => t.id === tabId);
+    if (!existingTab) {
+      setTabs(prev => [...prev, { id: tabId, type: 'table', label: `${view} (视图)`, database, table: view }]);
+    }
+    setActiveTabId(tabId);
+  };
+
+  // 新建查询标签页
+  const handleNewQuery = () => {
+    if (!connectedProfile) {
+      alert('请先连接数据库');
+      return;
+    }
+    queryCounter++;
+    const tabId = `query:${queryCounter}`;
+    const db = selectedDatabase || databases[0] || '';
+    setTabs(prev => [...prev, { id: tabId, type: 'query', label: `查询 ${queryCounter}`, database: db }]);
+    setActiveTabId(tabId);
+  };
+
+  const handleCloseTab = (tabId: string) => {
+    setTabs(prev => prev.filter(t => t.id !== tabId));
+    if (activeTabId === tabId) {
+      const remaining = tabs.filter(t => t.id !== tabId);
+      setActiveTabId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
+    }
+  };
+
+  const handleOpenTableFromObjects = (tableName: string) => {
+    if (selectedDatabase) {
+      handleTableSelect(selectedDatabase, tableName);
+    }
+  };
+
+  const sortedProfiles = useMemo(() => {
+    return [...savedProfiles].sort((a, b) => {
+      if (a.favorite && !b.favorite) return -1;
+      if (!a.favorite && b.favorite) return 1;
+      const aTime = a.lastUsed?.getTime() ?? 0;
+      const bTime = b.lastUsed?.getTime() ?? 0;
+      return bTime - aTime;
+    });
+  }, [savedProfiles]);
+
+  // 工具栏按钮
+  const toolbarButtons = [
+    { icon: <ConnectIcon />, label: '连接', onClick: openCreateConnectionDialog, color: '#666' },
+    { icon: <NewQueryIcon />, label: '新建查询', onClick: handleNewQuery, color: '#e74c3c' },
+    { icon: <TableIcon />, label: '表', onClick: () => {}, color: '#3498db' },
+    { icon: <ViewIcon />, label: '视图', onClick: () => {}, color: '#9b59b6' },
+    { icon: <FunctionIcon />, label: '函数', onClick: () => {}, color: '#e67e22' },
+    { icon: <UserIcon />, label: '用户', onClick: () => {}, color: '#1abc9c' },
+    { icon: <OtherIcon />, label: '其它', onClick: () => {}, color: '#95a5a6' },
+    { icon: <QueryIcon />, label: '查询', onClick: handleNewQuery, color: '#f39c12' },
+    { icon: <BackupIcon />, label: '备份', onClick: () => {}, color: '#27ae60' },
+    { icon: <AutoRunIcon />, label: '自动运行', onClick: () => {}, color: '#e91e63' },
+    { icon: <ModelIcon />, label: '模型', onClick: () => {}, color: '#00bcd4' },
+    { icon: <ChartIcon />, label: '图表', onClick: () => {}, color: '#673ab7' },
+  ];
+
+  const activeTab = tabs.find(t => t.id === activeTabId);
 
   return (
-    <Box
-      sx={{
-        height: '100vh',
-        bgcolor: theme.palette.background.default,
-        color: theme.palette.text.primary,
-        display: 'flex',
-        flexDirection: 'column'
-      }}
-    >
+    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'background.default' }}>
+      {/* 顶部工具栏 */}
       <Box
-        component="header"
         sx={{
-          px: 3,
-          py: 1.5,
-          backgroundImage: topBarBg,
-          borderBottom: `1px solid ${alpha(separatorColor, 0.8)}`,
-          boxShadow: '0 18px 36px rgba(4, 5, 12, 0.45)',
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          zIndex: 100,
-          backdropFilter: 'blur(12px)'
+          height: TOOLBAR_HEIGHT,
+          borderBottom: 1,
+          borderColor: 'divider',
+          display: 'flex',
+          alignItems: 'center',
+          px: 1,
+          gap: 0.5,
+          bgcolor: 'background.paper'
         }}
       >
-        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={3}>
-          <Stack direction="row" spacing={1.25} alignItems="center">
-            {topQuickActions.map((action) => (
-              <Tooltip key={action.key} title={action.label} placement="bottom">
-                <IconButton
-                  size="medium"
-                  sx={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 1.5,
-                    bgcolor: alpha(action.color, 0.28),
-                    color: '#ffffff',
-                    border: `1px solid ${alpha(action.color, 0.6)}`,
-                    boxShadow: `0 10px 22px ${alpha(action.color, 0.35)}`,
-                    '&:hover': {
-                      bgcolor: alpha(action.color, 0.36),
-                      boxShadow: `0 12px 24px ${alpha(action.color, 0.4)}`
-                    }
-                  }}
-                >
-                  {action.icon}
-                </IconButton>
-              </Tooltip>
-            ))}
-          </Stack>
-
-          <Stack direction="row" spacing={1.5} alignItems="center">
-            {connectionStatusChip}
-            {connectedProfile && (
-              <Tooltip title="关闭连接">
-                <span>
-                  <IconButton
-                    color="error"
-                    onClick={handleDisconnect}
-                    sx={{ border: `1px solid ${alpha(theme.palette.error.main, 0.4)}` }}
-                  >
-                    <DisconnectIcon fontSize="small" />
-                  </IconButton>
-                </span>
-              </Tooltip>
-            )}
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={openCreateConnectionDialog}
-              sx={{ boxShadow: '0 12px 24px rgba(48, 162, 255, 0.22)' }}
-            >
-              新建连接
-            </Button>
-          </Stack>
-
-          <Stack direction="row" spacing={1.25} alignItems="center">
-            {(['grid', 'list'] as const).map((modeKey) => {
-              const isActive = viewMode === modeKey;
-              const Icon = modeKey === 'grid' ? GridViewIcon : ListViewIcon;
-              return (
-                <IconButton
-                  key={modeKey}
-                  size="small"
-                  onClick={() => handleViewModeChange(modeKey)}
-                  sx={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 1.5,
-                    border: `1px solid ${alpha(theme.palette.common.white, isActive ? 0.2 : 0.06)}`,
-                    bgcolor: isActive
-                      ? alpha(theme.palette.primary.main, 0.28)
-                      : alpha(theme.palette.common.white, 0.05),
-                    color: isActive
-                      ? theme.palette.primary.light
-                      : alpha(theme.palette.text.secondary, 0.8),
-                    '&:hover': {
-                      bgcolor: alpha(theme.palette.primary.main, 0.32)
-                    }
-                  }}
-                >
-                  <Icon fontSize="small" />
-                </IconButton>
-              );
-            })}
-            <IconButton
-              size="small"
+        {toolbarButtons.map((btn, index) => (
+          <Tooltip key={index} title={btn.label}>
+            <Box
+              onClick={btn.onClick}
               sx={{
-                width: 34,
-                height: 34,
-                borderRadius: 1.5,
-                border: `1px solid ${alpha(theme.palette.common.white, 0.06)}`,
-                bgcolor: alpha(theme.palette.common.white, 0.05)
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                px: 1.5,
+                py: 0.5,
+                cursor: 'pointer',
+                borderRadius: 1,
+                minWidth: 50,
+                '&:hover': { bgcolor: 'action.hover' }
               }}
             >
-              <SettingsIcon fontSize="small" />
-            </IconButton>
-            <Avatar
-              sx={{
-                width: 36,
-                height: 36,
-                bgcolor: alpha(theme.palette.common.white, 0.08),
-                color: alpha(theme.palette.common.white, 0.78),
-                fontSize: 16,
-                border: `1px solid ${alpha(theme.palette.common.white, 0.12)}`
-              }}
-            >
-              <ProfileIcon fontSize="small" />
-            </Avatar>
-          </Stack>
-        </Stack>
+              <Box sx={{ color: btn.color, fontSize: 24 }}>{btn.icon}</Box>
+              <Typography variant="caption" sx={{ fontSize: 10, color: 'text.secondary', mt: 0.25 }}>
+                {btn.label}
+              </Typography>
+            </Box>
+          </Tooltip>
+        ))}
+        <Box sx={{ flex: 1 }} />
+        <ThemeToggleButton size="small" />
       </Box>
 
-      <Box
-        sx={{
-          flex: 1,
-          minHeight: 0,
-          pt: `${HEADER_HEIGHT}px`,
-          pb: `${FOOTER_HEIGHT}px`
-        }}
-      >
-      <Box
-        sx={{
-          height: '100%',
-          overflow: 'auto',
-          px: 3,
-          py: 3
-        }}
-      >
-          {isConnected ? (
-            <ExactMainView
-              databases={databases}
-              savedProfiles={navigatorProfiles}
-              activeProfile={connectedProfile}
-              connected={isConnected}
-              isConnecting={isConnecting}
-              onSelectProfile={handleSelectProfile}
-              onNewConnection={openCreateConnectionDialog}
-              onToggleFavorite={handleToggleFavorite}
-              onDeleteProfile={handleDeleteProfile}
-              onRefreshDatabases={() => connectedProfile && handleConnect(connectedProfile)}
-              onDisconnect={handleDisconnect}
-            />
-          ) : (
-            <WelcomeScreen
-              onConnect={handleConnect}
-              onNewConnection={openCreateConnectionDialog}
-              onEditConnection={openEditConnectionDialog}
-              savedProfiles={savedProfiles}
-              onDeleteConnection={handleDeleteProfile}
-              onToggleFavorite={handleToggleFavorite}
-              isConnecting={isConnecting}
-              connectingProfile={connectingProfileId || undefined}
-            />
-          )}
+      {/* 主体区域 */}
+      <Box sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
+        {/* 左侧连接列表 */}
+        <Box
+          sx={{
+            width: SIDEBAR_WIDTH,
+            flexShrink: 0,
+            borderRight: 1,
+            borderColor: 'divider',
+            overflow: 'hidden',
+            bgcolor: 'background.paper'
+          }}
+        >
+          <ConnectionSidebar
+            profiles={sortedProfiles}
+            activeProfile={connectedProfile}
+            databases={databases}
+            selectedDatabase={selectedDatabase}
+            selectedTable={selectedTable}
+            isConnecting={isConnecting}
+            connectingProfileId={connectingProfileId}
+            onConnect={handleConnect}
+            onDisconnect={handleDisconnect}
+            onNewConnection={openCreateConnectionDialog}
+            onEditConnection={openEditConnectionDialog}
+            onDeleteConnection={handleDeleteProfile}
+            onToggleFavorite={handleToggleFavorite}
+            onDatabaseSelect={handleDatabaseSelect}
+            onTableSelect={handleTableSelect}
+            onViewSelect={handleViewSelect}
+          />
         </Box>
-      </Box>
 
-      <Box
-        component="footer"
-        sx={{
-          px: 3,
-          py: 1,
-          borderTop: `1px solid ${separatorColor}`,
-          backgroundColor: alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.26 : 0.04),
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          zIndex: 100,
-          backdropFilter: 'blur(10px)'
-        }}
-      >
-        <Stack direction="row" spacing={3} alignItems="center" justifyContent="space-between">
-          <Typography variant="caption" color="text.secondary">
-            {connectedProfile
-              ? `${connectedProfile.host}:${connectedProfile.port} (${databases.length} 库)`
-              : '尚未建立数据库连接'}
-          </Typography>
-          {connectionError && (
-            <Typography variant="caption" color={theme.palette.error.main}>
-              {connectionError}
-            </Typography>
+        {/* 右侧内容区 */}
+        <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', bgcolor: 'background.default' }}>
+          {/* 标签栏 - 只在有打开的标签时显示 */}
+          {tabs.length > 0 && (
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
+              <Tabs
+                value={activeTabId || false}
+                onChange={(_, val) => setActiveTabId(val)}
+                variant="scrollable"
+                scrollButtons="auto"
+                sx={{ minHeight: 36, '& .MuiTabs-indicator': { height: 2 } }}
+              >
+                {tabs.map((tab) => (
+                  <Tab
+                    key={tab.id}
+                    value={tab.id}
+                    label={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        {tab.type === 'query' ? (
+                          <SqlIcon sx={{ fontSize: 14 }} />
+                        ) : (
+                          <TableIcon sx={{ fontSize: 14 }} />
+                        )}
+                        <span>{tab.label}</span>
+                        <CloseIcon
+                          sx={{ fontSize: 14, ml: 0.5, '&:hover': { color: 'error.main' } }}
+                          onClick={(e) => { e.stopPropagation(); handleCloseTab(tab.id); }}
+                        />
+                      </Box>
+                    }
+                    sx={{ minHeight: 36, textTransform: 'none', fontSize: 13 }}
+                  />
+                ))}
+              </Tabs>
+            </Box>
           )}
-          <Typography variant="caption" color="text.secondary">
-            Navicat 风格 UI · 点点够 MySQL
-          </Typography>
-        </Stack>
+
+          {/* 内容区 */}
+          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+            {activeTabId && activeTab ? (
+              activeTab.type === 'query' ? (
+                <QueryEditor database={activeTab.database} isDark={isDark} />
+              ) : (
+                <ExactDataTable database={activeTab.database} table={activeTab.table!} />
+              )
+            ) : (
+              <Box sx={{
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'text.secondary'
+              }}>
+                <Typography variant="body2">
+                  {connectedProfile ? '请在左侧选择表，或点击"新建查询"' : '请双击左侧连接以打开数据库'}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </Box>
       </Box>
 
       <NewNavicatConnectionDialog

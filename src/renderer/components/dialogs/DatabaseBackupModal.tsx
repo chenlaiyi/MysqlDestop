@@ -16,7 +16,7 @@ import {
   Typography,
   Divider
 } from '@mui/material';
-import { t } from '../i18n';
+import { t } from '../../i18n';
 
 interface DatabaseBackupModalProps {
   open: boolean;

@@ -14,7 +14,6 @@ import {
 } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import {
-  AddRounded as AddIcon,
   AccessTimeRounded as AccessTimeIcon,
   CloudOffRounded as EmptyIcon,
   EditRounded as EditIcon,
@@ -24,8 +23,6 @@ import {
   SearchRounded as SearchIcon,
   DeleteRounded as DeleteIcon
 } from '@mui/icons-material';
-import SuperConnectionWizard from './SuperConnectionWizard';
-import TestConnectionDialog from './TestConnectionDialog';
 
 interface ConnectionProfile {
   id: string;
@@ -121,33 +118,8 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   const listHoverBg = alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.14 : 0.1);
   const listActiveBg = alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.14);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isWizardOpen, setIsWizardOpen] = useState(false);
-  const [editingProfile, setEditingProfile] = useState<ConnectionProfile | undefined>();
-  const [showTestDialog, setShowTestDialog] = useState(false);
 
   const handleConnectClick = (profile: ConnectionProfile) => {
-    onConnect(profile);
-  };
-
-  const openCreateWizard = () => {
-    setEditingProfile(undefined);
-    setIsWizardOpen(true);
-  };
-
-  const openEditWizard = (profile: ConnectionProfile) => {
-    setEditingProfile(profile);
-    setIsWizardOpen(true);
-    onEditConnection(profile);
-  };
-
-  const handleWizardClose = () => {
-    setIsWizardOpen(false);
-    setEditingProfile(undefined);
-  };
-
-  const handleWizardConnect = (profile: ConnectionProfile) => {
-    setIsWizardOpen(false);
-    setEditingProfile(undefined);
     onConnect(profile);
   };
 
@@ -256,7 +228,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               size="small"
               onClick={(event) => {
                 event.stopPropagation();
-                openEditWizard(profile);
+                onEditConnection(profile);
               }}
             >
               <EditIcon fontSize="small" />
@@ -295,18 +267,6 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                     统一管理常用连接，快速发起和继续数据库会话。
                   </Typography>
                 </Box>
-                <Stack direction="row" spacing={1} flexWrap="wrap">
-                  <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={openCreateWizard}
-                  >
-                    新建连接
-                  </Button>
-                  <Button variant="outlined" onClick={() => setShowTestDialog(true)}>
-                    测试连接
-                  </Button>
-                </Stack>
               </Stack>
               <Stack
                 direction={{ xs: 'column', sm: 'row' }}
@@ -407,18 +367,6 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             </Stack>
           </Paper>
         </Stack>
-
-        <SuperConnectionWizard
-          open={isWizardOpen}
-          onClose={handleWizardClose}
-          onConnect={handleWizardConnect}
-          initialProfile={editingProfile}
-          savedProfiles={savedProfiles}
-        />
-
-        {showTestDialog && (
-          <TestConnectionDialog onClose={() => setShowTestDialog(false)} />
-        )}
       </>
     );
 };
