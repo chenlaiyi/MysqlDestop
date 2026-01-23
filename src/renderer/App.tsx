@@ -168,6 +168,27 @@ const App: React.FC = () => {
     setActiveTabId(null);
   };
 
+  const handleRefreshDatabases = async () => {
+    if (!connectedProfile) return;
+    try {
+      const config = {
+        host: connectedProfile.host,
+        port: connectedProfile.port,
+        user: connectedProfile.username,
+        password: connectedProfile.password,
+        database: connectedProfile.database,
+        ssl: connectedProfile.ssl
+      };
+      const result = await window.mysqlApi.connect(config);
+      if (result.success) {
+        const dbList = (result.data || []).map((row: any) => row.Database || row.database || row);
+        setDatabases(dbList);
+      }
+    } catch (error) {
+      console.error('刷新数据库列表失败:', error);
+    }
+  };
+
   const handleToggleFavorite = async (profileId: string) => {
     setSavedProfiles((prev) =>
       prev.map((profile) =>
@@ -373,6 +394,7 @@ const App: React.FC = () => {
             onDatabaseSelect={handleDatabaseSelect}
             onTableSelect={handleTableSelect}
             onViewSelect={handleViewSelect}
+            onRefreshDatabases={handleRefreshDatabases}
           />
         </Box>
 

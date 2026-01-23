@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld('mysqlApi', {
   createTable: (dbName: string, tableName: string, columns: { name: string, type: string, primaryKey: boolean, autoIncrement: boolean, nullable: boolean }[]) => ipcRenderer.invoke('mysql:createTable', dbName, tableName, columns),
   dropTable: (dbName: string, tableName: string) => ipcRenderer.invoke('mysql:dropTable', dbName, tableName),
   executeQuery: (query: string, database?: string) => ipcRenderer.invoke('mysql:executeQuery', query, database),
+  formatQuery: (query: string) => ipcRenderer.invoke('mysql:formatQuery', query),
+  createDatabase: (dbName: string) => ipcRenderer.invoke('mysql:createDatabase', dbName),
+  dropDatabase: (dbName: string) => ipcRenderer.invoke('mysql:dropDatabase', dbName),
   // 新增：连接健康检查和重连
   checkHealth: () => ipcRenderer.invoke('mysql:checkHealth'),
   reconnect: () => ipcRenderer.invoke('mysql:reconnect'),

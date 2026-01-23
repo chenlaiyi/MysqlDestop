@@ -13,7 +13,12 @@ import {
   MenuItem,
   Typography,
   CircularProgress,
-  Divider
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button
 } from '@mui/material';
 import {
   StorageRounded as ConnectionIcon,
@@ -22,7 +27,9 @@ import {
   SearchRounded as SearchIcon,
   ExpandMore as ExpandMoreIcon,
   ChevronRight as ChevronRightIcon,
-  SettingsRounded as SettingsIcon
+  SettingsRounded as SettingsIcon,
+  Add as AddIcon,
+  Delete as DeleteIcon
 } from '@mui/icons-material';
 
 interface ConnectionProfile {
@@ -55,6 +62,7 @@ interface ConnectionSidebarProps {
   onDatabaseSelect: (database: string) => void;
   onTableSelect: (database: string, table: string) => void;
   onViewSelect: (database: string, view: string) => void;
+  onRefreshDatabases?: () => void;
 }
 
 const ConnectionSidebar: React.FC<ConnectionSidebarProps> = ({
@@ -73,7 +81,8 @@ const ConnectionSidebar: React.FC<ConnectionSidebarProps> = ({
   onToggleFavorite,
   onDatabaseSelect,
   onTableSelect,
-  onViewSelect
+  onViewSelect,
+  onRefreshDatabases
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedConnections, setExpandedConnections] = useState<Set<string>>(new Set());
@@ -82,6 +91,19 @@ const ConnectionSidebar: React.FC<ConnectionSidebarProps> = ({
   const [views, setViews] = useState<{ [key: string]: string[] }>({});
   const [loadingTablesFor, setLoadingTablesFor] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number; profile: ConnectionProfile } | null>(null);
+
+  // 数据库右键菜单
+  const [dbContextMenu, setDbContextMenu] = useState<{ mouseX: number; mouseY: number; database: string } | null>(null);
+
+  // 创建数据库对话框
+  const [createDbDialogOpen, setCreateDbDialogOpen] = useState(false);
+  const [newDbName, setNewDbName] = useState('');
+  const [isCreatingDb, setIsCreatingDb] = useState(false);
+
+  // 删除数据库对话框
+  const [deleteDbDialogOpen, setDeleteDbDialogOpen] = useState(false);
+  const [dbToDelete, setDbToDelete] = useState<string | null>(null);
+  const [isDeletingDb, setIsDeletingDb] = useState(false);
 
   // 当连接成功时自动展开该连接
   useEffect(() => {
@@ -187,6 +209,80 @@ const ConnectionSidebar: React.FC<ConnectionSidebarProps> = ({
     }
   };
 
+  // 数据库右键菜单处理
+  const handleDbContextMenu = (event: React.MouseEvent, database: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDbContextMenu({ mouseX: event.clientX, mouseY: event.clientY, database });
+  };
+
+  const handleCloseDbContextMenu = () => {
+    setDbContextMenu(null);
+  };
+
+  // 创建数据库
+  const handleOpenCreateDbDialog = () => {
+    setNewDbName('');
+    setCreateDbDialogOpen(true);
+    handleCloseDbContextMenu();
+  };
+
+  const handleCloseCreateDbDialog = () => {
+    setCreateDbDialogOpen(false);
+    setNewDbName('');
+  };
+
+  const handleCreateDatabase = async () => {
+    if (!newDbName.trim()) {
+      alert('请输入数据库名称');
+      return;
+    }
+
+    setIsCreatingDb(true);
+    try {
+      const result = await window.mysqlApi.createDatabase(newDbName.trim());
+      if (!result.success) {
+        throw new Error(result.error || '创建数据库失败');
+      }
+      handleCloseCreateDbDialog();
+      onRefreshDatabases?.();
+    } catch (error: any) {
+      alert(error?.message || '创建数据库失败');
+    } finally {
+      setIsCreatingDb(false);
+    }
+  };
+
+  // 删除数据库
+  const handleOpenDeleteDbDialog = (database: string) => {
+    setDbToDelete(database);
+    setDeleteDbDialogOpen(true);
+    handleCloseDbContextMenu();
+  };
+
+  const handleCloseDeleteDbDialog = () => {
+    setDeleteDbDialogOpen(false);
+    setDbToDelete(null);
+  };
+
+  const handleDeleteDatabase = async () => {
+    if (!dbToDelete) return;
+
+    setIsDeletingDb(true);
+    try {
+      const result = await window.mysqlApi.dropDatabase(dbToDelete);
+      if (!result.success) {
+        throw new Error(result.error || '删除数据库失败');
+      }
+      handleCloseDeleteDbDialog();
+      onRefreshDatabases?.();
+    } catch (error: any) {
+      alert(error?.message || '删除数据库失败');
+    } finally {
+      setIsDeletingDb(false);
+    }
+  };
+
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.paper' }}>
       {/* 连接列表 */}
@@ -249,6 +345,7 @@ const ConnectionSidebar: React.FC<ConnectionSidebarProps> = ({
                         <Box key={database}>
                           <ListItemButton
                             onClick={() => toggleDatabase(database)}
+                            onContextMenu={(e) => handleDbContextMenu(e, database)}
                             sx={{ py: 0.25, pl: 5, minHeight: 28 }}
                           >
                             <ListItemIcon sx={{ minWidth: 20 }}>
@@ -414,6 +511,85 @@ const ConnectionSidebar: React.FC<ConnectionSidebarProps> = ({
           删除连接
         </MenuItem>
       </Menu>
+
+      {/* 数据库右键菜单 */}
+      <Menu
+        open={dbContextMenu !== null}
+        onClose={handleCloseDbContextMenu}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          dbContextMenu !== null
+            ? { top: dbContextMenu.mouseY, left: dbContextMenu.mouseX }
+            : undefined
+        }
+      >
+        <MenuItem onClick={handleOpenCreateDbDialog}>
+          <ListItemIcon>
+            <AddIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="新建数据库" />
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={() => dbContextMenu && handleOpenDeleteDbDialog(dbContextMenu.database)}>
+          <ListItemIcon>
+            <DeleteIcon fontSize="small" color="error" />
+          </ListItemIcon>
+          <ListItemText primary="删除数据库" primaryTypographyProps={{ color: 'error' }} />
+        </MenuItem>
+      </Menu>
+
+      {/* 创建数据库对话框 */}
+      <Dialog open={createDbDialogOpen} onClose={handleCloseCreateDbDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>新建数据库</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="数据库名称"
+            value={newDbName}
+            onChange={(e) => setNewDbName(e.target.value)}
+            size="small"
+            sx={{ mt: 1 }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleCreateDatabase();
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseCreateDbDialog}>取消</Button>
+          <Button
+            onClick={handleCreateDatabase}
+            variant="contained"
+            disabled={isCreatingDb || !newDbName.trim()}
+          >
+            {isCreatingDb ? <CircularProgress size={20} /> : '创建'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 删除数据库确认对话框 */}
+      <Dialog open={deleteDbDialogOpen} onClose={handleCloseDeleteDbDialog}>
+        <DialogTitle>确认删除数据库</DialogTitle>
+        <DialogContent>
+          <Typography>
+            确定要删除数据库 <strong>{dbToDelete}</strong> 吗？此操作无法撤销，所有数据将永久丢失。
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteDbDialog}>取消</Button>
+          <Button
+            onClick={handleDeleteDatabase}
+            color="error"
+            variant="contained"
+            disabled={isDeletingDb}
+          >
+            {isDeletingDb ? <CircularProgress size={20} /> : '删除'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

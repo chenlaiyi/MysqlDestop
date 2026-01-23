@@ -19,7 +19,8 @@ import {
   PlayArrow as ExecuteIcon,
   Stop as StopIcon,
   Save as SaveIcon,
-  ContentCopy as CopyIcon
+  ContentCopy as CopyIcon,
+  FormatAlignLeft as FormatIcon
 } from '@mui/icons-material';
 import AceEditor from 'react-ace';
 
@@ -39,6 +40,7 @@ const QueryEditor: React.FC<QueryEditorProps> = ({ database, isDark = true }) =>
   const [columns, setColumns] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [formatting, setFormatting] = useState(false);
   const [executionTime, setExecutionTime] = useState<number | null>(null);
   const [rowCount, setRowCount] = useState<number>(0);
   const editorRef = useRef<any>(null);
@@ -89,11 +91,34 @@ const QueryEditor: React.FC<QueryEditorProps> = ({ database, isDark = true }) =>
     }
   };
 
+  const handleFormat = async () => {
+    if (!query.trim()) return;
+
+    setFormatting(true);
+    try {
+      const response = await window.mysqlApi.formatQuery(query);
+      if (response.success && response.data) {
+        setQuery(response.data);
+      } else {
+        setError(response.error || '格式化失败');
+      }
+    } catch (err: any) {
+      setError(err.message || '格式化失败');
+    } finally {
+      setFormatting(false);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Ctrl/Cmd + Enter 执行查询
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
       handleExecute();
+    }
+    // Ctrl/Cmd + Shift + F 格式化
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'f') {
+      e.preventDefault();
+      handleFormat();
     }
   };
 
@@ -131,6 +156,18 @@ const QueryEditor: React.FC<QueryEditorProps> = ({ database, isDark = true }) =>
         >
           {loading ? '执行中' : '执行'}
         </Button>
+
+        <Tooltip title="格式化 SQL (Ctrl+Shift+F)">
+          <span>
+            <IconButton
+              size="small"
+              onClick={handleFormat}
+              disabled={formatting || !query.trim()}
+            >
+              {formatting ? <CircularProgress size={18} /> : <FormatIcon fontSize="small" />}
+            </IconButton>
+          </span>
+        </Tooltip>
 
         {database && (
           <Chip label={database} size="small" variant="outlined" />

@@ -21,7 +21,17 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
-  Divider
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  FormControl,
+  FormLabel,
+  RadioGroup,
+  FormControlLabel,
+  Radio
 } from '@mui/material';
 import type { TextFieldProps } from '@mui/material/TextField';
 import { alpha, useTheme } from '@mui/material/styles';
@@ -125,6 +135,20 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
     original: any;
   } | null>(null);
   const [isSavingCell, setIsSavingCell] = useState(false);
+
+  // 添加行对话框状态
+  const [addRowDialogOpen, setAddRowDialogOpen] = useState(false);
+  const [newRowData, setNewRowData] = useState<Record<string, string>>({});
+  const [isAddingRow, setIsAddingRow] = useState(false);
+
+  // 删除确认对话框状态
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // 导出对话框状态
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'csv' | 'json' | 'sql'>('csv');
+  const [exportFileName, setExportFileName] = useState('');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -375,6 +399,164 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
     }
   };
 
+  // 添加行功能
+  const handleOpenAddRowDialog = () => {
+    const emptyData: Record<string, string> = {};
+    columns.forEach(col => emptyData[col] = '');
+    setNewRowData(emptyData);
+    setAddRowDialogOpen(true);
+  };
+
+  const handleCloseAddRowDialog = () => {
+    setAddRowDialogOpen(false);
+    setNewRowData({});
+  };
+
+  const handleNewRowDataChange = (column: string, value: string) => {
+    setNewRowData(prev => ({ ...prev, [column]: value }));
+  };
+
+  const handleAddRow = async () => {
+    if (columns.length === 0) return;
+
+    setIsAddingRow(true);
+    try {
+      const result = await window.mysqlApi.insertRow(database, table, newRowData);
+      if (!result.success) {
+        throw new Error(result.error || '添加失败');
+      }
+      handleCloseAddRowDialog();
+      loadData(); // 刷新数据
+    } catch (error: any) {
+      alert(error?.message || '添加行失败');
+    } finally {
+      setIsAddingRow(false);
+    }
+  };
+
+  // 删除行功能
+  const handleOpenDeleteDialog = () => {
+    if (selected.length === 0) {
+      alert('请先选择要删除的行');
+      return;
+    }
+    setDeleteDialogOpen(true);
+  };
+
+  const handleCloseDeleteDialog = () => {
+    setDeleteDialogOpen(false);
+  };
+
+  const handleDeleteRows = async () => {
+    if (selected.length === 0 || columns.length === 0) return;
+
+    setIsDeleting(true);
+    const primaryKey = columns[0];
+
+    try {
+      for (const index of selected) {
+        const row = data[index];
+        if (!row) continue;
+        const primaryKeyValue = row[primaryKey];
+        if (primaryKeyValue === undefined) continue;
+
+        const result = await window.mysqlApi.deleteRow(database, table, primaryKey, primaryKeyValue);
+        if (!result.success) {
+          throw new Error(result.error || `删除行 ${primaryKeyValue} 失败`);
+        }
+      }
+      setSelected([]);
+      handleCloseDeleteDialog();
+      loadData(); // 刷新数据
+    } catch (error: any) {
+      alert(error?.message || '删除失败');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // 导出功能
+  const handleOpenExportDialog = () => {
+    setExportFileName(`${database}_${table}`);
+    setExportDialogOpen(true);
+  };
+
+  const handleCloseExportDialog = () => {
+    setExportDialogOpen(false);
+  };
+
+  const exportToCSV = (exportData: any[]) => {
+    if (exportData.length === 0) return '';
+    const headers = Object.keys(exportData[0]);
+    const csvContent = [
+      headers.join(','),
+      ...exportData.map(row =>
+        headers.map(header => {
+          const value = row[header];
+          if (value === null || value === undefined) return '';
+          const strValue = String(value);
+          if (strValue.includes(',') || strValue.includes('"') || strValue.includes('\n')) {
+            return `"${strValue.replace(/"/g, '""')}"`;
+          }
+          return strValue;
+        }).join(',')
+      )
+    ].join('\n');
+    return csvContent;
+  };
+
+  const exportToSQL = (exportData: any[], tableName: string) => {
+    if (exportData.length === 0) return '';
+    const headers = Object.keys(exportData[0]);
+    const insertStatements = exportData.map(row => {
+      const values = headers.map(header => {
+        const value = row[header];
+        if (value === null || value === undefined) return 'NULL';
+        if (typeof value === 'string') return `'${value.replace(/'/g, "''")}'`;
+        return value;
+      }).join(', ');
+      return `INSERT INTO \`${tableName}\` (\`${headers.join('`, `')}\`) VALUES (${values});`;
+    });
+    return insertStatements.join('\n');
+  };
+
+  const handleExport = () => {
+    if (!exportFileName.trim()) {
+      alert('请输入文件名');
+      return;
+    }
+
+    let content = '';
+    let fileExtension = '';
+
+    switch (exportFormat) {
+      case 'csv':
+        content = exportToCSV(data);
+        fileExtension = '.csv';
+        break;
+      case 'json':
+        content = JSON.stringify(data, null, 2);
+        fileExtension = '.json';
+        break;
+      case 'sql':
+        content = exportToSQL(data, table);
+        fileExtension = '.sql';
+        break;
+    }
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = exportFileName + fileExtension;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    handleCloseExportDialog();
+  };
+
   const handleColumnMenuToggle = (event: React.MouseEvent, column: string) => {
     event.preventDefault();
     event.stopPropagation();
@@ -578,15 +760,23 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
         </Tooltip>
 
         <Tooltip title="导出">
-          <IconButton size="small">
+          <IconButton size="small" onClick={handleOpenExportDialog} disabled={data.length === 0}>
             <ExportIcon fontSize="small" />
           </IconButton>
         </Tooltip>
 
-        <Tooltip title="添加">
-          <IconButton size="small">
+        <Tooltip title="添加行">
+          <IconButton size="small" onClick={handleOpenAddRowDialog} disabled={columns.length === 0}>
             <AddIcon fontSize="small" />
           </IconButton>
+        </Tooltip>
+
+        <Tooltip title={`删除选中 (${selected.length})`}>
+          <span>
+            <IconButton size="small" onClick={handleOpenDeleteDialog} disabled={selected.length === 0}>
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </span>
         </Tooltip>
       </Box>
 
@@ -933,6 +1123,95 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
           </Box>
         </Box>
       </Box>
+
+      {/* 添加行对话框 */}
+      <Dialog open={addRowDialogOpen} onClose={handleCloseAddRowDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>添加新行</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {columns.map((col, index) => (
+              <TextField
+                key={col}
+                label={col}
+                value={newRowData[col] || ''}
+                onChange={(e) => handleNewRowDataChange(col, e.target.value)}
+                fullWidth
+                size="small"
+                autoFocus={index === 0}
+              />
+            ))}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseAddRowDialog}>取消</Button>
+          <Button
+            onClick={handleAddRow}
+            variant="contained"
+            disabled={isAddingRow}
+          >
+            {isAddingRow ? <CircularProgress size={20} /> : '添加'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 删除确认对话框 */}
+      <Dialog open={deleteDialogOpen} onClose={handleCloseDeleteDialog}>
+        <DialogTitle>确认删除</DialogTitle>
+        <DialogContent>
+          <Typography>
+            确定要删除选中的 {selected.length} 行数据吗？此操作无法撤销。
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteDialog}>取消</Button>
+          <Button
+            onClick={handleDeleteRows}
+            color="error"
+            variant="contained"
+            disabled={isDeleting}
+          >
+            {isDeleting ? <CircularProgress size={20} /> : '删除'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 导出对话框 */}
+      <Dialog open={exportDialogOpen} onClose={handleCloseExportDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>导出数据</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <FormControl component="fieldset" sx={{ mb: 3 }}>
+              <FormLabel component="legend">导出格式</FormLabel>
+              <RadioGroup
+                value={exportFormat}
+                onChange={(e) => setExportFormat(e.target.value as 'csv' | 'json' | 'sql')}
+              >
+                <FormControlLabel value="csv" control={<Radio />} label="CSV" />
+                <FormControlLabel value="json" control={<Radio />} label="JSON" />
+                <FormControlLabel value="sql" control={<Radio />} label="SQL (INSERT 语句)" />
+              </RadioGroup>
+            </FormControl>
+
+            <TextField
+              fullWidth
+              label="文件名"
+              value={exportFileName}
+              onChange={(e) => setExportFileName(e.target.value)}
+              size="small"
+            />
+
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+              将导出当前页 {data.length} 行数据
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseExportDialog}>取消</Button>
+          <Button onClick={handleExport} variant="contained">
+            导出
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
