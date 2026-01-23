@@ -747,28 +747,47 @@ ipcMain.handle('mysql:exportDatabase', async (event, database: string, exportTyp
     if (exportType === 'data' || exportType === 'both') {
       exportContent += `-- Database Data\n`;
       const [tables] = await connection.query('SHOW TABLES') as [any[], any];
-      
+
       for (const tableRow of tables) {
         const tableName = Object.values(tableRow)[0] as string;
-        const [rows] = await connection.query(`SELECT * FROM \`${tableName}\``) as [any[], any];
-        
-        if (rows.length > 0) {
-          exportContent += `-- Data for table: ${tableName}\n`;
+
+        // 获取表的行数
+        const [countResult] = await connection.query(`SELECT COUNT(*) as cnt FROM \`${tableName}\``) as [any[], any];
+        const totalRows = countResult[0].cnt;
+
+        if (totalRows === 0) continue;
+
+        exportContent += `-- Data for table: ${tableName} (${totalRows} rows)\n`;
+
+        // 分批导出，每批 1000 行
+        const batchSize = 1000;
+        let offset = 0;
+
+        while (offset < totalRows) {
+          const [rows] = await connection.query(
+            `SELECT * FROM \`${tableName}\` LIMIT ${batchSize} OFFSET ${offset}`
+          ) as [any[], any];
+
+          if (rows.length === 0) break;
+
           const columns = Object.keys(rows[0]);
-          
+
           for (const row of rows) {
             const values = columns.map(col => {
               const value = row[col];
               if (value === null) return 'NULL';
-              if (typeof value === 'string') return `'${value.replace(/'/g, "''")}'`;
+              if (typeof value === 'string') return `'${value.replace(/'/g, "''").replace(/\\/g, '\\\\')}'`;
               if (value instanceof Date) return `'${value.toISOString().slice(0, 19).replace('T', ' ')}'`;
+              if (Buffer.isBuffer(value)) return `X'${value.toString('hex')}'`;
               return value;
             }).join(', ');
-            
+
             exportContent += `INSERT INTO \`${tableName}\` (\`${columns.join('`, `')}\`) VALUES (${values});\n`;
           }
-          exportContent += '\n';
+
+          offset += batchSize;
         }
+        exportContent += '\n';
       }
     }
 
