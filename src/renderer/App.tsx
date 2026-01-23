@@ -13,13 +13,8 @@ import {
   TableChartRounded as TableIcon,
   ViewListRounded as ViewIcon,
   FunctionsRounded as FunctionIcon,
-  PeopleRounded as UserIcon,
-  HelpOutlineRounded as OtherIcon,
   SearchRounded as QueryIcon,
   BackupRounded as BackupIcon,
-  SmartToyRounded as AutoRunIcon,
-  BarChartRounded as ChartIcon,
-  InsightsRounded as ModelIcon,
   CloseRounded as CloseIcon,
   CodeRounded as SqlIcon,
   EventRounded as EventIcon
@@ -33,6 +28,7 @@ import TablesOverview from './components/panels/TablesOverview';
 import ViewsPanel from './components/panels/ViewsPanel';
 import FunctionsPanel from './components/panels/FunctionsPanel';
 import EventsPanel from './components/panels/EventsPanel';
+import DatabaseBackupModal from './components/dialogs/DatabaseBackupModal';
 import { ConnectionProfile } from './types';
 import { useTheme } from './theme/ThemeProvider';
 
@@ -92,6 +88,7 @@ const App: React.FC = () => {
   const [connectionDialogProfile, setConnectionDialogProfile] = useState<ConnectionProfile | null>(null);
   const [tabs, setTabs] = useState<TabItem[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [showBackupDialog, setShowBackupDialog] = useState(false);
 
   const loadConnections = useCallback(async () => {
     try {
@@ -369,6 +366,15 @@ const App: React.FC = () => {
     }
   };
 
+  // 打开备份对话框
+  const handleOpenBackupDialog = () => {
+    if (!connectedProfile) {
+      alert('请先连接数据库');
+      return;
+    }
+    setShowBackupDialog(true);
+  };
+
   const handleOpenTableFromObjects = (tableName: string) => {
     if (selectedDatabase) {
       handleTableSelect(selectedDatabase, tableName);
@@ -394,10 +400,7 @@ const App: React.FC = () => {
     { icon: <FunctionIcon />, label: '函数', onClick: handleOpenFunctionsPanel, color: '#e67e22' },
     { icon: <EventIcon />, label: '事件', onClick: handleOpenEventsPanel, color: '#1abc9c' },
     { icon: <QueryIcon />, label: '查询', onClick: handleNewQuery, color: '#f39c12' },
-    { icon: <BackupIcon />, label: '备份', onClick: () => {}, color: '#27ae60' },
-    { icon: <AutoRunIcon />, label: '自动运行', onClick: () => {}, color: '#e91e63' },
-    { icon: <ModelIcon />, label: '模型', onClick: () => {}, color: '#00bcd4' },
-    { icon: <ChartIcon />, label: '图表', onClick: () => {}, color: '#673ab7' },
+    { icon: <BackupIcon />, label: '备份', onClick: handleOpenBackupDialog, color: '#27ae60' },
   ];
 
   const activeTab = tabs.find(t => t.id === activeTabId);
@@ -589,6 +592,12 @@ const App: React.FC = () => {
             }
           : undefined}
         mode={connectionDialogMode}
+      />
+
+      <DatabaseBackupModal
+        open={showBackupDialog}
+        onClose={() => setShowBackupDialog(false)}
+        databases={databases}
       />
     </Box>
   );
