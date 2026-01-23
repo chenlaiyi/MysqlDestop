@@ -47,8 +47,12 @@ import {
   FirstPage as FirstPageIcon,
   LastPage as LastPageIcon,
   KeyboardArrowLeft as PrevPageIcon,
-  KeyboardArrowRight as NextPageIcon
+  KeyboardArrowRight as NextPageIcon,
+  Upload as ImportIcon,
+  Storage as IndexIcon
 } from '@mui/icons-material';
+import DataImportModal from '../dialogs/DataImportModal';
+import IndexManager from '../panels/IndexManager';
 
 interface ExactDataTableProps {
   database: string;
@@ -149,6 +153,12 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState<'csv' | 'json' | 'sql'>('csv');
   const [exportFileName, setExportFileName] = useState('');
+
+  // 导入对话框状态
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+
+  // 索引管理对话框状态
+  const [indexManagerOpen, setIndexManagerOpen] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -771,6 +781,18 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
           </IconButton>
         </Tooltip>
 
+        <Tooltip title="导入数据">
+          <IconButton size="small" onClick={() => setImportDialogOpen(true)}>
+            <ImportIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title="索引管理">
+          <IconButton size="small" onClick={() => setIndexManagerOpen(true)}>
+            <IndexIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+
         <Tooltip title={`删除选中 (${selected.length})`}>
           <span>
             <IconButton size="small" onClick={handleOpenDeleteDialog} disabled={selected.length === 0}>
@@ -1211,6 +1233,32 @@ const ExactDataTable: React.FC<ExactDataTableProps> = ({ database, table }) => {
             导出
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* 导入对话框 */}
+      <DataImportModal
+        open={importDialogOpen}
+        onClose={() => setImportDialogOpen(false)}
+        database={database}
+        tables={[table]}
+        onImportComplete={() => loadData()}
+      />
+
+      {/* 索引管理对话框 */}
+      <Dialog
+        open={indexManagerOpen}
+        onClose={() => setIndexManagerOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: { height: '80vh' }
+        }}
+      >
+        <IndexManager
+          database={database}
+          tableName={table}
+          onRefresh={() => loadData()}
+        />
       </Dialog>
     </Box>
   );

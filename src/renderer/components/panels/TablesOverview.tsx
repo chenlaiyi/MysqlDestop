@@ -28,9 +28,12 @@ import {
   Visibility as ViewIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
+  Add as AddIcon,
+  Settings as DesignIcon
 } from '@mui/icons-material';
 import { t } from '../../i18n';
+import TableDesignModal from '../dialogs/TableDesignModal';
 
 interface TableInfo {
   name: string;
@@ -71,6 +74,8 @@ function TablesOverview({
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [bannerMessage, setBannerMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [designModalOpen, setDesignModalOpen] = useState(false);
+  const [designTableName, setDesignTableName] = useState<string | undefined>(undefined);
 
   const filteredTables = detailedTables.filter(table =>
     table.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -146,6 +151,24 @@ function TablesOverview({
 
   const handleDeleteTable = (tableName: string) => {
     setDeleteTarget(tableName);
+  };
+
+  const handleOpenDesignModal = (tableName?: string) => {
+    setDesignTableName(tableName);
+    setDesignModalOpen(true);
+  };
+
+  const handleCloseDesignModal = () => {
+    setDesignModalOpen(false);
+    setDesignTableName(undefined);
+  };
+
+  const handleDesignComplete = async () => {
+    setBannerMessage({
+      type: 'success',
+      text: designTableName ? `表 ${designTableName} 已更新` : '新表已创建'
+    });
+    await Promise.resolve(onRefresh());
   };
 
   const closeDeleteDialog = () => {
@@ -253,26 +276,44 @@ function TablesOverview({
               }}
             />
           </Box>
-          
-          <Tooltip title={t('tablesOverview.refreshTables')}>
-            <IconButton 
-              onClick={() => { void onRefresh(); }}
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Button
+              startIcon={<AddIcon />}
               size="small"
+              variant="contained"
+              onClick={() => handleOpenDesignModal()}
               sx={{
-                bgcolor: '#ffffff',
-                border: '1px solid #e3e8ee',
-                padding: '4px',
+                bgcolor: '#3498db',
+                fontSize: '0.75rem',
+                textTransform: 'none',
                 '&:hover': {
-                  bgcolor: '#ecf0f1',
-                  transform: 'rotate(180deg)',
-                  borderColor: '#3498db'
-                },
-                transition: 'all 0.3s ease'
+                  bgcolor: '#2980b9'
+                }
               }}
             >
-              <RefreshIcon sx={{ fontSize: 16 }} />
-            </IconButton>
-          </Tooltip>
+              创建表
+            </Button>
+            <Tooltip title={t('tablesOverview.refreshTables')}>
+              <IconButton
+                onClick={() => { void onRefresh(); }}
+                size="small"
+                sx={{
+                  bgcolor: '#ffffff',
+                  border: '1px solid #e3e8ee',
+                  padding: '4px',
+                  '&:hover': {
+                    bgcolor: '#ecf0f1',
+                    transform: 'rotate(180deg)',
+                    borderColor: '#3498db'
+                  },
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <RefreshIcon sx={{ fontSize: 16 }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
         </Box>
         
         <TextField
@@ -459,7 +500,7 @@ function TablesOverview({
                     <TableCell align="center">
                       <Box sx={{ display: 'flex', gap: 0.2 }}>
                         <Tooltip title={t('tablesOverview.viewData')}>
-                          <IconButton 
+                          <IconButton
                             size="small"
                             onClick={(e) => {
                               e.stopPropagation();
@@ -470,8 +511,20 @@ function TablesOverview({
                             <ViewIcon sx={{ fontSize: 14 }} />
                           </IconButton>
                         </Tooltip>
+                        <Tooltip title="设计表结构">
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenDesignModal(table.name);
+                            }}
+                            sx={{ color: '#9b59b6', padding: '2px' }}
+                          >
+                            <DesignIcon sx={{ fontSize: 14 }} />
+                          </IconButton>
+                        </Tooltip>
                         <Tooltip title={t('tablesOverview.editStructure')}>
-                          <IconButton 
+                          <IconButton
                             size="small"
                             onClick={(e) => {
                               e.stopPropagation();
@@ -483,7 +536,7 @@ function TablesOverview({
                           </IconButton>
                         </Tooltip>
                         <Tooltip title={t('tablesOverview.deleteTable')}>
-                          <IconButton 
+                          <IconButton
                             size="small"
                             onClick={(e) => {
                               e.stopPropagation();
@@ -596,6 +649,15 @@ function TablesOverview({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* 表设计模态框 */}
+      <TableDesignModal
+        open={designModalOpen}
+        onClose={handleCloseDesignModal}
+        database={database}
+        tableName={designTableName}
+        onComplete={handleDesignComplete}
+      />
     </Box>
   );
 }

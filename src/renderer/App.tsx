@@ -17,7 +17,8 @@ import {
   BackupRounded as BackupIcon,
   CloseRounded as CloseIcon,
   CodeRounded as SqlIcon,
-  EventRounded as EventIcon
+  EventRounded as EventIcon,
+  AccountTree as ERIcon
 } from '@mui/icons-material';
 import ConnectionSidebar from './components/layout/ConnectionSidebar';
 import NewNavicatConnectionDialog, { NavicatConnectionPayload } from './components/dialogs/ConnectionDialog';
@@ -28,6 +29,7 @@ import TablesOverview from './components/panels/TablesOverview';
 import ViewsPanel from './components/panels/ViewsPanel';
 import FunctionsPanel from './components/panels/FunctionsPanel';
 import EventsPanel from './components/panels/EventsPanel';
+import ERDiagram from './components/panels/ERDiagram';
 import DatabaseBackupModal from './components/dialogs/DatabaseBackupModal';
 import { ConnectionProfile } from './types';
 import { useTheme } from './theme/ThemeProvider';
@@ -65,7 +67,7 @@ const SIDEBAR_WIDTH = 200;
 
 interface TabItem {
   id: string;
-  type: 'table' | 'query' | 'tables-overview' | 'views-panel' | 'functions-panel' | 'events-panel';
+  type: 'table' | 'query' | 'tables-overview' | 'views-panel' | 'functions-panel' | 'events-panel' | 'er-diagram';
   label: string;
   database: string;
   table?: string;  // 仅 table 类型需要
@@ -358,6 +360,25 @@ const App: React.FC = () => {
     setActiveTabId(tabId);
   };
 
+  // 打开 ER 图
+  const handleOpenERDiagram = () => {
+    if (!connectedProfile) {
+      alert('请先连接数据库');
+      return;
+    }
+    const db = selectedDatabase || databases[0] || '';
+    if (!db) {
+      alert('请先选择数据库');
+      return;
+    }
+    const tabId = `er-diagram:${db}`;
+    const existingTab = tabs.find(t => t.id === tabId);
+    if (!existingTab) {
+      setTabs(prev => [...prev, { id: tabId, type: 'er-diagram', label: `ER图 - ${db}`, database: db }]);
+    }
+    setActiveTabId(tabId);
+  };
+
   const handleCloseTab = (tabId: string) => {
     setTabs(prev => prev.filter(t => t.id !== tabId));
     if (activeTabId === tabId) {
@@ -399,8 +420,9 @@ const App: React.FC = () => {
     { icon: <ViewIcon />, label: '视图', onClick: handleOpenViewsPanel, color: '#9b59b6' },
     { icon: <FunctionIcon />, label: '函数', onClick: handleOpenFunctionsPanel, color: '#e67e22' },
     { icon: <EventIcon />, label: '事件', onClick: handleOpenEventsPanel, color: '#1abc9c' },
+    { icon: <ERIcon />, label: 'ER图', onClick: handleOpenERDiagram, color: '#27ae60' },
     { icon: <QueryIcon />, label: '查询', onClick: handleNewQuery, color: '#f39c12' },
-    { icon: <BackupIcon />, label: '备份', onClick: handleOpenBackupDialog, color: '#27ae60' },
+    { icon: <BackupIcon />, label: '备份', onClick: handleOpenBackupDialog, color: '#2c3e50' },
   ];
 
   const activeTab = tabs.find(t => t.id === activeTabId);
@@ -509,6 +531,8 @@ const App: React.FC = () => {
                           <FunctionIcon sx={{ fontSize: 14 }} />
                         ) : tab.type === 'events-panel' ? (
                           <EventIcon sx={{ fontSize: 14 }} />
+                        ) : tab.type === 'er-diagram' ? (
+                          <ERIcon sx={{ fontSize: 14 }} />
                         ) : (
                           <TableIcon sx={{ fontSize: 14 }} />
                         )}
@@ -544,6 +568,8 @@ const App: React.FC = () => {
                 <FunctionsPanel database={activeTab.database} />
               ) : activeTab.type === 'events-panel' ? (
                 <EventsPanel database={activeTab.database} />
+              ) : activeTab.type === 'er-diagram' ? (
+                <ERDiagram database={activeTab.database} />
               ) : (
                 <ExactDataTable database={activeTab.database} table={activeTab.table!} />
               )
