@@ -21,13 +21,18 @@ import {
   BarChartRounded as ChartIcon,
   InsightsRounded as ModelIcon,
   CloseRounded as CloseIcon,
-  CodeRounded as SqlIcon
+  CodeRounded as SqlIcon,
+  EventRounded as EventIcon
 } from '@mui/icons-material';
 import ConnectionSidebar from './components/layout/ConnectionSidebar';
 import NewNavicatConnectionDialog, { NavicatConnectionPayload } from './components/dialogs/ConnectionDialog';
 import ThemeToggleButton from './components/common/ThemeToggleButton';
 import ExactDataTable from './components/data/DataTable';
 import QueryEditor from './components/editor/QueryEditor';
+import TablesOverview from './components/panels/TablesOverview';
+import ViewsPanel from './components/panels/ViewsPanel';
+import FunctionsPanel from './components/panels/FunctionsPanel';
+import EventsPanel from './components/panels/EventsPanel';
 import { ConnectionProfile } from './types';
 import { useTheme } from './theme/ThemeProvider';
 
@@ -64,7 +69,7 @@ const SIDEBAR_WIDTH = 200;
 
 interface TabItem {
   id: string;
-  type: 'table' | 'query';
+  type: 'table' | 'query' | 'tables-overview' | 'views-panel' | 'functions-panel' | 'events-panel';
   label: string;
   database: string;
   table?: string;  // 仅 table 类型需要
@@ -280,6 +285,82 @@ const App: React.FC = () => {
     setActiveTabId(tabId);
   };
 
+  // 打开表管理面板
+  const handleOpenTablesPanel = () => {
+    if (!connectedProfile) {
+      alert('请先连接数据库');
+      return;
+    }
+    const db = selectedDatabase || databases[0] || '';
+    if (!db) {
+      alert('请先选择数据库');
+      return;
+    }
+    const tabId = `tables-overview:${db}`;
+    const existingTab = tabs.find(t => t.id === tabId);
+    if (!existingTab) {
+      setTabs(prev => [...prev, { id: tabId, type: 'tables-overview', label: `表 - ${db}`, database: db }]);
+    }
+    setActiveTabId(tabId);
+  };
+
+  // 打开视图管理面板
+  const handleOpenViewsPanel = () => {
+    if (!connectedProfile) {
+      alert('请先连接数据库');
+      return;
+    }
+    const db = selectedDatabase || databases[0] || '';
+    if (!db) {
+      alert('请先选择数据库');
+      return;
+    }
+    const tabId = `views-panel:${db}`;
+    const existingTab = tabs.find(t => t.id === tabId);
+    if (!existingTab) {
+      setTabs(prev => [...prev, { id: tabId, type: 'views-panel', label: `视图 - ${db}`, database: db }]);
+    }
+    setActiveTabId(tabId);
+  };
+
+  // 打开函数管理面板
+  const handleOpenFunctionsPanel = () => {
+    if (!connectedProfile) {
+      alert('请先连接数据库');
+      return;
+    }
+    const db = selectedDatabase || databases[0] || '';
+    if (!db) {
+      alert('请先选择数据库');
+      return;
+    }
+    const tabId = `functions-panel:${db}`;
+    const existingTab = tabs.find(t => t.id === tabId);
+    if (!existingTab) {
+      setTabs(prev => [...prev, { id: tabId, type: 'functions-panel', label: `函数 - ${db}`, database: db }]);
+    }
+    setActiveTabId(tabId);
+  };
+
+  // 打开事件管理面板
+  const handleOpenEventsPanel = () => {
+    if (!connectedProfile) {
+      alert('请先连接数据库');
+      return;
+    }
+    const db = selectedDatabase || databases[0] || '';
+    if (!db) {
+      alert('请先选择数据库');
+      return;
+    }
+    const tabId = `events-panel:${db}`;
+    const existingTab = tabs.find(t => t.id === tabId);
+    if (!existingTab) {
+      setTabs(prev => [...prev, { id: tabId, type: 'events-panel', label: `事件 - ${db}`, database: db }]);
+    }
+    setActiveTabId(tabId);
+  };
+
   const handleCloseTab = (tabId: string) => {
     setTabs(prev => prev.filter(t => t.id !== tabId));
     if (activeTabId === tabId) {
@@ -308,11 +389,10 @@ const App: React.FC = () => {
   const toolbarButtons = [
     { icon: <ConnectIcon />, label: '连接', onClick: openCreateConnectionDialog, color: '#666' },
     { icon: <NewQueryIcon />, label: '新建查询', onClick: handleNewQuery, color: '#e74c3c' },
-    { icon: <TableIcon />, label: '表', onClick: () => {}, color: '#3498db' },
-    { icon: <ViewIcon />, label: '视图', onClick: () => {}, color: '#9b59b6' },
-    { icon: <FunctionIcon />, label: '函数', onClick: () => {}, color: '#e67e22' },
-    { icon: <UserIcon />, label: '用户', onClick: () => {}, color: '#1abc9c' },
-    { icon: <OtherIcon />, label: '其它', onClick: () => {}, color: '#95a5a6' },
+    { icon: <TableIcon />, label: '表', onClick: handleOpenTablesPanel, color: '#3498db' },
+    { icon: <ViewIcon />, label: '视图', onClick: handleOpenViewsPanel, color: '#9b59b6' },
+    { icon: <FunctionIcon />, label: '函数', onClick: handleOpenFunctionsPanel, color: '#e67e22' },
+    { icon: <EventIcon />, label: '事件', onClick: handleOpenEventsPanel, color: '#1abc9c' },
     { icon: <QueryIcon />, label: '查询', onClick: handleNewQuery, color: '#f39c12' },
     { icon: <BackupIcon />, label: '备份', onClick: () => {}, color: '#27ae60' },
     { icon: <AutoRunIcon />, label: '自动运行', onClick: () => {}, color: '#e91e63' },
@@ -418,6 +498,14 @@ const App: React.FC = () => {
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                         {tab.type === 'query' ? (
                           <SqlIcon sx={{ fontSize: 14 }} />
+                        ) : tab.type === 'tables-overview' ? (
+                          <TableIcon sx={{ fontSize: 14 }} />
+                        ) : tab.type === 'views-panel' ? (
+                          <ViewIcon sx={{ fontSize: 14 }} />
+                        ) : tab.type === 'functions-panel' ? (
+                          <FunctionIcon sx={{ fontSize: 14 }} />
+                        ) : tab.type === 'events-panel' ? (
+                          <EventIcon sx={{ fontSize: 14 }} />
                         ) : (
                           <TableIcon sx={{ fontSize: 14 }} />
                         )}
@@ -440,6 +528,19 @@ const App: React.FC = () => {
             {activeTabId && activeTab ? (
               activeTab.type === 'query' ? (
                 <QueryEditor database={activeTab.database} isDark={isDark} />
+              ) : activeTab.type === 'tables-overview' ? (
+                <TablesOverview
+                  database={activeTab.database}
+                  tables={[]}
+                  onTableSelect={(tableName) => handleTableSelect(activeTab.database, tableName)}
+                  onRefresh={() => {}}
+                />
+              ) : activeTab.type === 'views-panel' ? (
+                <ViewsPanel database={activeTab.database} />
+              ) : activeTab.type === 'functions-panel' ? (
+                <FunctionsPanel database={activeTab.database} />
+              ) : activeTab.type === 'events-panel' ? (
+                <EventsPanel database={activeTab.database} />
               ) : (
                 <ExactDataTable database={activeTab.database} table={activeTab.table!} />
               )
