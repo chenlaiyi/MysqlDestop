@@ -47,7 +47,7 @@
     "ace-builds": "^1.43.1",
     "electron-store": "^10.1.0",
     "mysql2": "^3.14.1",
-    "react": "^19.1.0",
+    "react": "^19.2.8",
     "react-ace": "^14.0.1",
     "react-dom": "^19.1.0",
     "sql-formatter": "^15.6.6",
@@ -63,7 +63,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.18.0",
-    "@types/react": "^19.1.8",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.1.6",
     "@types/ssh2": "^1.15.5",
     "copy-webpack-plugin": "^14.0.0",
