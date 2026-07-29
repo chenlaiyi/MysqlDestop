@@ -5,8 +5,9 @@
   <p><strong>Navicat 风格的现代 MySQL 桌面客户端</strong></p>
 
   <a href="https://github.com/chenlaiyi/MysqlDestop/releases"><img src="https://img.shields.io/github/v/release/chenlaiyi/MysqlDestop.svg" alt="GitHub release"></a>
+  <a href="https://github.com/chenlaiyi/MysqlDestop/actions/workflows/build.yml"><img src="https://github.com/chenlaiyi/MysqlDestop/actions/workflows/build.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
-  <a href="https://github.com/chenlaiyi/MysqlDestop"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Apple%20Silicon%20%26%20Intel-lightgrey.svg" alt="Platform"></a>
+  <a href="https://github.com/chenlaiyi/MysqlDestop"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Apple%20Silicon-lightgrey.svg" alt="Platform"></a>
 </div>
 
 点点够 MySQL Desktop 基于 Electron + React + Material UI 构建，为 Mac 用户提供轻量、直观且专业的 MySQL 数据库管理体验。1.0.4 版本全新引入 Navicat 风格的暗色界面，整合连接向导、表格编辑、性能监控等工作流，帮助开发者与 DBA 更快完成日常运维任务。
@@ -15,8 +16,8 @@
 
 | 分类 | 功能 | 说明 |
 | --- | --- | --- |
-| 连接管理 | 多连接配置、收藏、最近使用 | 连接信息本地加密存储，支持快速切换、收藏标记与最近连接入口 |
-| 安全访问 | SSH Tunnel、SSL | 内置 `ssh2` / `ssh2-promise` 创建安全隧道，兼容 SSL 连接 |
+| 连接管理 | 多连接配置、收藏、最近使用 | 连接凭据使用 Electron `safeStorage`（macOS Keychain）在本地加密，支持快速切换、收藏标记与最近连接入口 |
+| 安全访问 | SSH Tunnel、SSL | 内置 `ssh2` 创建安全隧道，兼容 SSL 连接 |
 | 数据浏览 | Navicat 风格数据表、批量选择、列显隐、单元格编辑 | Exact Data Table 支持分页、排序、模糊搜索、列管理，并可双击单元格直接编辑保存 |
 | 对象视图 | 数据库对象总览、右键菜单 | "对象" 标签页列出表名、行数、长度、引擎、创建/修改时间等信息，右键即可复制、重命名、清空、删除或打开 |
 | SQL 编辑 | React Ace 编辑器、格式化、历史记录 | 提供语法高亮、自动补全、查询历史保存与快照回滚 |
@@ -39,7 +40,8 @@
 
 ## ⚙️ 系统要求
 
-- **操作系统**：macOS 12 (Monterey) 或更高版本（Apple Silicon / Intel）
+- **操作系统**：macOS 12 (Monterey) 或更高版本
+- **处理器**：当前 Release 提供 Apple Silicon (`arm64`) 安装包；其他架构可从源码构建
 - **数据库**：MySQL 5.7、8.0 及兼容分支
 - **内存**：建议 ≥ 4 GB
 - **网络**：可访问目标数据库或 SSH 跳板机
@@ -52,7 +54,7 @@ git clone https://github.com/chenlaiyi/MysqlDestop.git
 cd MysqlDestop
 
 # 安装依赖
-npm install
+npm ci
 
 # 启动开发模式（编译 + Electron）
 npm start
@@ -66,6 +68,8 @@ npm run build
 | 指令 | 说明 |
 | --- | --- |
 | `npm start` | 编译主/渲染进程并启动 Electron |
+| `npm run typecheck` | 仅执行 TypeScript 类型检查 |
+| `npm run check` | 执行类型检查与生产构建（CI 同款） |
 | `npm run build` | TypeScript 编译 + Webpack 打包（开发） |
 | `npm run build:prod` | 生产环境构建（`NODE_ENV=production`） |
 | `npm run dist` | 使用 electron-builder 打包 macOS DMG（不发布） |
@@ -91,7 +95,7 @@ MysqlDestop/
 
 ## 🧩 技术栈
 
-- **桌面框架**：Electron 37
+- **桌面框架**：Electron 39
 - **前端框架**：React 19 + TypeScript 5
 - **UI 库**：Material UI 7（深度定制主题与组件覆盖）
 - **代码编辑**：Ace Editor (`react-ace`)
@@ -101,7 +105,7 @@ MysqlDestop/
 ## 🤝 参与贡献
 
 1. Fork 本仓库并创建特性分支：`git checkout -b feat/my-feature`
-2. 提交前确保通过 TypeScript 检查：`npx tsc --noEmit`
+2. 提交前确保通过完整检查：`npm run check`
 3. 使用约定式提交信息，例如 `feat: add navicat style toolbar`
 4. 推送并创建 Pull Request，描述变更动机与验证方式
 
@@ -113,7 +117,7 @@ MysqlDestop/
   - `connect(config)`：建立数据库连接并返回库列表
   - `getConnections()` / `saveConnection()`：管理本地保存的连接
   - `getTables(database)` / `getTableData(database, table, options)`：获取表结构与数据
-- 敏感配置通过 `electron-store` 加密保存，仅存于本地设备。
+- 数据库连接凭据通过 Electron `safeStorage` 加密后写入本地配置；应用不提供云同步或遥测。
 
 ## 🗺️ 更新日志
 

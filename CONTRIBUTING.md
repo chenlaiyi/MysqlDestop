@@ -12,9 +12,9 @@
    git clone https://github.com/YOUR_USERNAME/MysqlDestop.git
    cd MysqlDestop
    ```
-3. 安装依赖：
+3. 安装锁定版本的依赖：
    ```bash
-   npm install
+   npm ci
    ```
 4. 启动开发环境：
    ```bash
@@ -24,7 +24,6 @@
 ### 分支策略
 
 - `main` - 主分支，包含稳定的发布版本
-- `develop` - 开发分支，最新的开发进度
 - `feature/*` - 功能分支，开发新功能
 - `bugfix/*` - 修复分支，修复问题
 - `hotfix/*` - 热修复分支，紧急修复
@@ -113,8 +112,6 @@ Closes #123
 ### TypeScript/JavaScript
 
 - 使用TypeScript进行类型安全
-- 遵循ESLint规则
-- 使用Prettier格式化代码
 - 函数和变量使用驼峰命名
 - 常量使用大写下划线命名
 
@@ -134,25 +131,21 @@ Closes #123
 
 ## 🧪 测试
 
-### 运行测试
+### 运行检查
 
 ```bash
-# 运行所有测试
-npm test
+# TypeScript 类型检查
+npm run typecheck
 
-# 运行测试并监听变化
-npm run test:watch
-
-# 生成覆盖率报告
-npm run test:coverage
+# 与 CI 相同的完整检查
+npm run check
 ```
 
 ### 测试要求
 
-- 新功能必须包含相应测试
-- 保持测试覆盖率在80%以上
-- 编写清晰的测试用例描述
-- 测试应该独立且可重复
+- 提交前必须通过 `npm run check`
+- 涉及数据库操作时，请说明验证所用的 MySQL 版本和测试步骤
+- 若新增自动化测试基础设施，请确保测试独立、可重复且不依赖真实凭据
 
 ## 📦 构建和发布
 
@@ -182,7 +175,7 @@ npm run dist
 ### 准备工作
 
 1. 确保您的分支基于最新的main分支
-2. 运行测试确保通过
+2. 运行 `npm run check` 确保通过
 3. 更新相关文档
 4. 检查代码风格
 

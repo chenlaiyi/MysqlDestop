@@ -1,11 +1,13 @@
 {
-  "name": "diandian-mysql-client",
+  "name": "mysql-desktop-client",
   "productName": "点点够MySQL客户端",
   "version": "1.1.0",
-  "description": "点点够数据库mysql版本 - 专业的MySQL数据库管理工具",
+  "description": "An open-source MySQL desktop client for macOS",
   "main": "dist/main/main.js",
   "scripts": {
     "start": "npm run build && electron .",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run build:prod",
     "build": "tsc && webpack",
     "build:prod": "cross-env NODE_ENV=production tsc && webpack",
     "package": "npm run build:prod && electron-builder",
@@ -34,7 +36,7 @@
     "url": "https://github.com/chenlaiyi/MysqlDestop/issues"
   },
   "homepage": "https://github.com/chenlaiyi/MysqlDestop#readme",
-  "author": "点点够团队",
+  "author": "Bluce Chen and contributors",
   "license": "MIT",
   "type": "commonjs",
   "dependencies": {
@@ -42,53 +44,43 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.2.0",
     "@mui/material": "^7.2.0",
-    "@mui/x-tree-view": "^8.6.0",
     "ace-builds": "^1.43.1",
-    "archiver": "^7.0.1",
-    "crypto": "^1.0.1",
-    "csv-parser": "^3.2.0",
     "electron-store": "^10.1.0",
-    "fs-extra": "^11.3.1",
-    "lodash": "^4.17.21",
-    "moment": "^2.30.1",
     "mysql2": "^3.14.1",
-    "node-ssh": "^13.2.1",
-    "pg": "^8.16.3",
     "react": "^19.1.0",
     "react-ace": "^14.0.1",
     "react-dom": "^19.1.0",
     "sql-formatter": "^15.6.6",
-    "sqlite3": "^5.1.7",
     "ssh2": "^1.17.0",
-    "ssh2-promise": "^1.0.3",
-    "typescript": "^5.8.3",
-    "unzipper": "^0.12.3",
-    "xlsx": "^0.18.5"
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=22 <25",
+    "npm": ">=10"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.8"
   },
   "devDependencies": {
-    "@types/archiver": "^6.0.3",
-    "@types/fs-extra": "^11.0.4",
-    "@types/lodash": "^4.17.20",
     "@types/node": "^22.18.0",
-    "@types/pg": "^8.15.5",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@types/ssh2": "^1.15.5",
-    "copy-webpack-plugin": "^13.0.0",
+    "copy-webpack-plugin": "^14.0.0",
     "cross-env": "^7.0.3",
     "css-loader": "^7.1.2",
-    "electron": "^37.10.3",
-    "electron-builder": "^24.13.3",
+    "electron": "39.8.5",
+    "electron-builder": "^26.15.3",
     "html-webpack-plugin": "^5.6.3",
-    "node-gyp": "^9.4.1",
     "style-loader": "^4.0.0",
     "ts-loader": "^9.5.2",
-    "webpack": "^5.99.9",
+    "webpack": "^5.109.2",
     "webpack-cli": "^6.0.1"
   },
   "build": {
     "appId": "com.diandian.mysql-client-release",
     "productName": "点点够MySQL客户端",
+    "npmRebuild": false,
     "directories": {
       "output": "release"
     },
@@ -99,7 +91,7 @@
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
-      "icon": "build/icons/icon.icns",
+      "icon": "assets/icon.icns",
       "target": [
         {
           "target": "dmg",
@@ -109,7 +101,7 @@
     },
     "dmg": {
       "title": "点点够MySQL客户端 ${version}",
-      "icon": "build/icons/icon.icns",
+      "icon": "assets/icon.icns",
       "iconSize": 80,
       "contents": [
         {

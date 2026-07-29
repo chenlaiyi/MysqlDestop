@@ -46,7 +46,7 @@ declare global {
       dropTable: (dbName: string, tableName: string) => Promise<{ success: boolean; error?: string }>;
       exportDatabase: (database: string, exportType: 'structure' | 'data' | 'both') => Promise<{ success: boolean; error?: string; data?: string }>;
       // 新增：连接健康检查和重连
-      checkHealth: () => Promise<{ success: boolean; error?: string; isHealthy?: boolean; lastCheckTime?: number; config?: any }>;
+      checkHealth: () => Promise<{ success: boolean; error?: string; isHealthy?: boolean; lastCheckTime?: number }>;
       reconnect: () => Promise<{ success: boolean; error?: string; message?: string }>;
     };
   }

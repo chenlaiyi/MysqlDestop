@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
 import path from 'path';
 import mysql from 'mysql2/promise';
 import Store from 'electron-store';
 import { format } from 'sql-formatter';
 import { getConnectionPool, closeAllPools, checkConnectionHealth, recreatePool, getConnectionStatus } from './connectionManager';
+import { protectConnectionSecrets, revealConnectionSecrets } from './credentialStore';
 
 // 区分开发和生产环境的配置
 const storeOptions = {
@@ -13,12 +14,20 @@ const storeOptions = {
 const store = new Store<any>(storeOptions);
 
 ipcMain.handle('store:get-connections', () => {
-  return (store as any).get('connections', {});
+  const storedConnections = (store as any).get('connections', {});
+  const connections = revealConnectionSecrets(storedConnections);
+
+  // Migrate legacy plaintext credentials after the first successful read.
+  if (safeStorage.isEncryptionAvailable()) {
+    (store as any).set('connections', protectConnectionSecrets(connections));
+  }
+
+  return connections;
 });
 
 ipcMain.handle('store:save-connection', (event, name, config) => {
   const connections = (store as any).get('connections', {});
-  connections[name] = config;
+  connections[name] = protectConnectionSecrets(config);
   (store as any).set('connections', connections);
   return { success: true };
 });
@@ -86,7 +95,7 @@ ipcMain.handle('mysql:store-config', (event, config) => {
     // 保存完整配置到持久化存储（包含UI相关字段）
     const connections = (store as any).get('connections', {});
     const connectionKey = config.connectionName || `${config.user}@${config.host}:${config.port}`;
-    connections[connectionKey] = config; // 保存完整配置用于UI显示
+    connections[connectionKey] = protectConnectionSecrets(config); // 保存完整配置用于UI显示
     (store as any).set('connections', connections);
     
     console.log('连接配置已保存:', connectionKey);
@@ -136,8 +145,7 @@ ipcMain.handle('mysql:checkHealth', async (event) => {
     return { 
       success: true, 
       isHealthy, 
-      lastCheckTime: status.lastCheckTime,
-      config: currentConnectionConfig 
+      lastCheckTime: status.lastCheckTime
     };
   } catch (error) {
     const err = error as Error;

@@ -6,17 +6,14 @@
 
 | 版本 | 支持状态 |
 | --- | --- |
-| 1.0.x   | :white_check_mark: |
-| < 1.0   | :x: |
+| 最新 Release | :white_check_mark: |
+| 更早版本 | :x: |
 
 ## 报告安全漏洞
 
 如果您发现了安全漏洞，请不要在公开的Issue中报告。
 
-请通过以下方式私下联系我们：
-
-1. 通过GitHub的私人消息联系项目维护者
-2. 发送邮件到项目维护者（通过GitHub profile获取联系方式）
+请使用 GitHub 的 [Private vulnerability reporting](https://github.com/chenlaiyi/MysqlDestop/security/advisories/new) 私下提交报告，不要创建公开 Issue。
 
 在报告中请包含：
 
@@ -27,15 +24,15 @@
 
 我们承诺：
 
-- 在24小时内确认收到您的报告
-- 在合理时间内提供修复时间表
+- 尽量在 3 个工作日内确认收到报告
+- 评估影响后提供修复计划
 - 在修复发布后公开致谢（除非您希望保持匿名）
 
 ## 安全最佳实践
 
 ### 数据保护
 
-- 所有数据库连接信息都在本地加密存储
+- 数据库连接凭据使用 Electron `safeStorage`（macOS Keychain）加密后存储
 - 不会向外部服务器传输敏感信息
 - 应用程序不包含遥测或数据收集功能
 
